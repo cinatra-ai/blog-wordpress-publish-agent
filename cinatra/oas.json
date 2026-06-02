@@ -1,0 +1,339 @@
+{
+  "agentspec_version": "26.1.0",
+  "component_type": "Flow",
+  "id": "blog-wordpress-publish-agent-flow",
+  "name": "Blog WordPress Publish Agent",
+  "description": "Creates a WordPress draft from a Cinatra blog post: starts via blog_post_publish_wordpress_start, polls blog_project_get until wordpressDraftGeneration.status === 'succeeded', then pauses at a HITL gate. On reject, calls blog_post_publish_wordpress_delete with deleteInWordPress=true to remove the draft from WordPress itself. Post body and hero image are artifact-canonical (@cinatra-ai/blog-post-artifact + @cinatra-ai/blog-image-artifact); blog_project_get returns refs only, and blog_post_publish_wordpress_start resolves bytes server-side. The agent flow is operational-metadata-only.",
+  "metadata": {
+    "cinatra": {
+      "type": "flow",
+      "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
+      "packageVersion": "0.1.1",
+      "hitlScreens": [
+        "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm"
+      ],
+      "llm": {
+        "preferredProvider": "openai",
+        "preferredModel": "gpt-5.5"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "title": "projectId",
+      "type": "string"
+    },
+    {
+      "title": "postId",
+      "type": "string"
+    },
+    {
+      "title": "wordpressInstanceId",
+      "type": "string"
+    }
+  ],
+  "outputs": [
+    {
+      "title": "projectId",
+      "type": "string"
+    },
+    {
+      "title": "postId",
+      "type": "string"
+    },
+    {
+      "title": "wordpressDraftId",
+      "type": "string"
+    },
+    {
+      "title": "wordpressAdminUrl",
+      "type": "string"
+    },
+    {
+      "title": "approved",
+      "type": "boolean"
+    },
+    {
+      "title": "summary",
+      "type": "string"
+    }
+  ],
+  "start_node": {
+    "$component_ref": "start"
+  },
+  "nodes": [
+    {
+      "$component_ref": "start"
+    },
+    {
+      "$component_ref": "publish"
+    },
+    {
+      "$component_ref": "end"
+    }
+  ],
+  "control_flow_connections": [
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "start_to_publish",
+      "from_node": {
+        "$component_ref": "start"
+      },
+      "to_node": {
+        "$component_ref": "publish"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "publish_to_end",
+      "from_node": {
+        "$component_ref": "publish"
+      },
+      "to_node": {
+        "$component_ref": "end"
+      }
+    }
+  ],
+  "data_flow_connections": [
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_projectId_to_publish_projectId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "projectId",
+      "destination_node": {
+        "$component_ref": "publish"
+      },
+      "destination_input": "projectId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_postId_to_publish_postId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "postId",
+      "destination_node": {
+        "$component_ref": "publish"
+      },
+      "destination_input": "postId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_wordpressInstanceId_to_publish_wordpressInstanceId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "wordpressInstanceId",
+      "destination_node": {
+        "$component_ref": "publish"
+      },
+      "destination_input": "wordpressInstanceId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "publish_projectId_to_end_projectId",
+      "source_node": {
+        "$component_ref": "publish"
+      },
+      "source_output": "projectId",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "projectId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "publish_postId_to_end_postId",
+      "source_node": {
+        "$component_ref": "publish"
+      },
+      "source_output": "postId",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "postId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "publish_wordpressDraftId_to_end_wordpressDraftId",
+      "source_node": {
+        "$component_ref": "publish"
+      },
+      "source_output": "wordpressDraftId",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "wordpressDraftId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "publish_wordpressAdminUrl_to_end_wordpressAdminUrl",
+      "source_node": {
+        "$component_ref": "publish"
+      },
+      "source_output": "wordpressAdminUrl",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "wordpressAdminUrl"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "publish_approved_to_end_approved",
+      "source_node": {
+        "$component_ref": "publish"
+      },
+      "source_output": "approved",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "approved"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "publish_summary_to_end_summary",
+      "source_node": {
+        "$component_ref": "publish"
+      },
+      "source_output": "summary",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "summary"
+    }
+  ],
+  "$referenced_components": {
+    "start": {
+      "component_type": "StartNode",
+      "id": "start",
+      "name": "Inputs",
+      "metadata": {
+        "cinatra": {
+          "required": [
+            "projectId",
+            "postId",
+            "wordpressInstanceId"
+          ],
+          "hidden": []
+        }
+      },
+      "inputs": [
+        {
+          "title": "projectId",
+          "type": "string"
+        },
+        {
+          "title": "postId",
+          "type": "string"
+        },
+        {
+          "title": "wordpressInstanceId",
+          "type": "string"
+        }
+      ]
+    },
+    "publish": {
+      "component_type": "ApiNode",
+      "id": "publish",
+      "name": "WordPress publish orchestration via cinatra-mcp",
+      "url": "{{CINATRA_BASE_URL}}/api/llm-bridge",
+      "http_method": "POST",
+      "data": {
+        "agent_id": "blog-wordpress-publish-agent",
+        "system": "You are a blog-WordPress-publish orchestrator. Follow SKILL.md step-by-step. Pause at HITL Gate `:draft-confirm` so the operator can confirm the WordPress draft or reject (which deletes the draft from WordPress). blog_project_get returns refs only — posts[].postArtifactId / posts[].imageArtifactId / posts[].linkedinDrafts[].contentArtifactId. The publish primitive resolves bytes server-side; your flow is operational-metadata-only. Return a single JSON object with {projectId, postId, wordpressDraftId, wordpressAdminUrl, approved, summary} — nothing else.",
+        "user": "{# pyagentspec-input-hint: {{ projectId }} {{ postId }} {{ wordpressInstanceId }} #}Create a WordPress draft for the blog post.\n\nInputs:\n- projectId: {{ projectId }}\n- postId: {{ postId }}\n- wordpressInstanceId: {{ wordpressInstanceId }}",
+        "cinatra_llm": {
+          "preferredProvider": "openai",
+          "preferredModel": "gpt-5.5"
+        }
+      },
+      "inputs": [
+        {
+          "title": "projectId",
+          "type": "string"
+        },
+        {
+          "title": "postId",
+          "type": "string"
+        },
+        {
+          "title": "wordpressInstanceId",
+          "type": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "title": "projectId",
+          "type": "string"
+        },
+        {
+          "title": "postId",
+          "type": "string"
+        },
+        {
+          "title": "wordpressDraftId",
+          "type": "string"
+        },
+        {
+          "title": "wordpressAdminUrl",
+          "type": "string"
+        },
+        {
+          "title": "approved",
+          "type": "boolean"
+        },
+        {
+          "title": "summary",
+          "type": "string"
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "write_safe",
+          "requiresApproval": false,
+          "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
+          "description": "Single ApiNode -> /api/llm-bridge. metadata.cinatra.toolboxes is INTENTIONALLY OMITTED so the LLM reaches blog_project_get, blog_post_publish_wordpress_{start,delete,cancel} via the injected Cinatra self-MCP. The HITL gate (draft-confirm) is declared at root metadata.cinatra.hitlScreens and emitted via the standard A2UI INTERRUPT mechanism."
+        }
+      }
+    },
+    "end": {
+      "component_type": "EndNode",
+      "id": "end",
+      "name": "End",
+      "outputs": [
+        {
+          "title": "projectId",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "postId",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "wordpressDraftId",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "wordpressAdminUrl",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "approved",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "title": "summary",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    }
+  }
+}
