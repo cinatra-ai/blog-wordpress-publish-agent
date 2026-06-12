@@ -11,6 +11,14 @@
   "cinatra": {
     "apiVersion": "cinatra.ai/v1",
     "kind": "agent",
-    "dependencies": []
+    "dependencies": [],
+    "fieldRenderers": [
+      {
+        "id": "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm",
+        "kind": "wordpress-draft-confirm",
+        "priority": 90,
+        "midRunHitl": true
+      }
+    ]
   }
 }
