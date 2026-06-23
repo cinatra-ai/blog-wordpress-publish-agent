@@ -1,6 +1,6 @@
 {
   "name": "@cinatra-ai/blog-wordpress-publish-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "Apache-2.0",
   "description": "Creates a WordPress draft from a Cinatra blog post: starts the draft creation job, polls blog_project_get until ready, then pauses for HITL operator confirmation. On reject, deletes the draft from WordPress.",
   "type": "module",
