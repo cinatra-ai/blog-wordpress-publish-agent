@@ -11,7 +11,36 @@
   "cinatra": {
     "apiVersion": "cinatra.ai/v1",
     "kind": "agent",
-    "dependencies": [],
+    "dependencies": [
+      {
+        "packageName": "@cinatra-ai/wordpress-mcp-connector",
+        "edgeType": "runtime",
+        "versionConstraint": {
+          "kind": "exact",
+          "version": "0.1.4"
+        },
+        "requirement": "required",
+        "kind": "connector"
+      }
+    ],
+    "consumes": [
+      {
+        "primitive": "blog_post_publish_wordpress_start",
+        "requirement": "required"
+      },
+      {
+        "primitive": "blog_post_publish_wordpress_delete",
+        "requirement": "required"
+      },
+      {
+        "primitive": "blog_post_publish_wordpress_status",
+        "requirement": "required"
+      },
+      {
+        "primitive": "blog_project_get",
+        "requirement": "required"
+      }
+    ],
     "fieldRenderers": [
       {
         "id": "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm",
