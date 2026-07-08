@@ -11,6 +11,7 @@
   "cinatra": {
     "apiVersion": "cinatra.ai/v1",
     "kind": "agent",
+    "displayName": "Blog WordPress Publish Agent",
     "dependencies": [
       {
         "packageName": "@cinatra-ai/wordpress-mcp-connector",
@@ -48,6 +49,15 @@
         "priority": 90,
         "midRunHitl": true
       }
-    ]
+    ],
+    "packageType": "agent",
+    "manifestVersion": 1,
+    "sourceTemplateId": "blog-wordpress-publish-agent-flow",
+    "sourceVersionId": "d7d9f3a9-a6fa-4f18-8879-375c833b3e3e",
+    "sourceVersionNumber": 1,
+    "riskLevel": "low",
+    "hasApprovalGates": false,
+    "toolAccess": [],
+    "ownerOrgId": null
   }
 }
