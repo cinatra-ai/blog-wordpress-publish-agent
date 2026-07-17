@@ -6,30 +6,8 @@
   "type": "module",
   "files": [
     "cinatra",
-    "skills",
-    "src",
-    "!src/__tests__/"
+    "skills"
   ],
-  "dependencies": {
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "radix-ui": "^1.4.3",
-    "tailwind-merge": "^3.5.0"
-  },
-  "peerDependencies": {
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "@cinatra-ai/sdk-extensions": "*",
-    "@cinatra-ai/sdk-ui": "*"
-  },
-  "peerDependenciesMeta": {
-    "@cinatra-ai/sdk-extensions": {
-      "optional": true
-    },
-    "@cinatra-ai/sdk-ui": {
-      "optional": true
-    }
-  },
   "cinatra": {
     "apiVersion": "cinatra.ai/v1",
     "kind": "agent",
@@ -69,11 +47,7 @@
         "id": "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm",
         "kind": "wordpress-draft-confirm",
         "priority": 90,
-        "midRunHitl": true,
-        "component": {
-          "entry": "src/renderers/draft-confirm",
-          "propsApiVersion": 1
-        }
+        "midRunHitl": true
       }
     ],
     "packageType": "agent",
