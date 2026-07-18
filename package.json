@@ -1,13 +1,33 @@
 {
   "name": "@cinatra-ai/blog-wordpress-publish-agent",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "license": "Apache-2.0",
   "description": "Creates a WordPress draft from a Cinatra blog post: starts the draft creation job, polls blog_project_get until ready, then pauses for HITL operator confirmation. On reject, deletes the draft from WordPress.",
   "type": "module",
   "files": [
     "cinatra",
-    "skills"
+    "skills",
+    "src"
   ],
+  "peerDependencies": {
+    "@cinatra-ai/sdk-extensions": "*",
+    "@cinatra-ai/sdk-ui": "*",
+    "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@cinatra-ai/sdk-extensions": {
+      "optional": true
+    },
+    "@cinatra-ai/sdk-ui": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "react": "^19.0.0"
+  },
   "cinatra": {
     "apiVersion": "cinatra.ai/v1",
     "kind": "agent",
@@ -47,7 +67,11 @@
         "id": "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm",
         "kind": "wordpress-draft-confirm",
         "priority": 90,
-        "midRunHitl": true
+        "midRunHitl": true,
+        "component": {
+          "entry": "./src/renderers/draft-confirm.tsx",
+          "propsApiVersion": 1
+        }
       }
     ],
     "packageType": "agent",
