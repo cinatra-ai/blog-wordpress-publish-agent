@@ -1,6 +1,6 @@
 {
   "name": "@cinatra-ai/blog-wordpress-publish-agent",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "license": "Apache-2.0",
   "description": "Creates a WordPress draft from a Cinatra blog post: starts the draft creation job, polls blog_project_get until ready, then pauses for HITL operator confirmation. On reject, deletes the draft from WordPress.",
   "type": "module",
@@ -41,6 +41,26 @@
         },
         "requirement": "required",
         "kind": "connector"
+      },
+      {
+        "packageName": "@cinatra-ai/blog-post-artifact",
+        "edgeType": "runtime",
+        "versionConstraint": {
+          "kind": "semver-range",
+          "range": "^0.1.0"
+        },
+        "requirement": "required",
+        "kind": "artifact"
+      },
+      {
+        "packageName": "@cinatra-ai/blog-image-artifact",
+        "edgeType": "runtime",
+        "versionConstraint": {
+          "kind": "semver-range",
+          "range": "^0.1.0"
+        },
+        "requirement": "required",
+        "kind": "artifact"
       }
     ],
     "consumes": [
@@ -82,5 +102,8 @@
     "hasApprovalGates": false,
     "toolAccess": [],
     "ownerOrgId": null
+  },
+  "scripts": {
+    "test": "sh -c \"node --test\""
   }
 }
