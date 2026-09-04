@@ -21,7 +21,7 @@ import {
   passthroughNodes,
   source,
   titles,
-} from "./oas-contract.mjs";
+} from "./oas-contract.test.mjs";
 
 const ADDRESS_KEYS = [
   "wordpressPublishedUrl",

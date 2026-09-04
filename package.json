@@ -5,7 +5,7 @@
   "description": "Publishes the blog post ARTIFACT revision a person continued with to a connected WordPress site and writes the site's address back onto that artifact. Takes an artifact reference (postArtifactId + postRepresentationRevisionId), confirms with the person before anything reaches the site, creates the page through the WordPress connector's own site catalogue, and merges the address onto the artifact's data. Returns a receipt, never a new artifact.",
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "sh -c \"node --test\""
   },
   "files": [
     "cinatra",
@@ -108,6 +108,7 @@
     "riskLevel": "low",
     "hasApprovalGates": false,
     "toolAccess": [],
-    "ownerOrgId": null
+    "ownerOrgId": null,
+    "produces": []
   }
 }
