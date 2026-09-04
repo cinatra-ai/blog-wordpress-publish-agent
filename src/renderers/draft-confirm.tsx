@@ -20,32 +20,40 @@ import {
 // through the generated field-renderer component map + the extension-mount
 // wrapper, which falls back to the schema-field floor on any load failure.
 //
-// A PURE snapshot -> onChange renderer: it shows the operator the WordPress
-// admin URL of the created draft and lets them confirm (leave the draft in
-// place) or reject (the agent then deletes the draft from WordPress via
-// deleteInWordPress: true). It requests NO host action ports.
+// THE CONFIRMATION COMES BEFORE THE SITE WRITE (cinatra#3035, plan section 6.1
+// step 7: "a confirmation before the post goes to the site, then the page's
+// address on the post"). So this screen names WHAT WILL BE PUBLISHED — the post
+// artifact and the exact revision the person continued with — not a draft that
+// already exists somewhere. A decline leaves nothing behind to remove.
+//
+// A PURE snapshot -> onChange renderer: it requests NO host action ports, and
+// it does not edit the post. The words that go to the site are the pinned
+// revision's, read by the step in front of the agent.
 
 type DraftConfirmValue = {
-  wordpressDraftId: string;
-  wordpressAdminUrl: string;
+  postArtifactId: string;
+  postRepresentationRevisionId: string;
   wordpressInstanceId?: string;
+  title?: string;
+  excerpt?: string;
 };
+
+function str(v: Record<string, unknown>, key: string): string {
+  return typeof v[key] === "string" ? (v[key] as string) : "";
+}
 
 function toDraftConfirmValue(value: unknown): DraftConfirmValue {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const v = value as Record<string, unknown>;
     return {
-      wordpressDraftId:
-        typeof v.wordpressDraftId === "string" ? v.wordpressDraftId : "",
-      wordpressAdminUrl:
-        typeof v.wordpressAdminUrl === "string" ? v.wordpressAdminUrl : "",
-      wordpressInstanceId:
-        typeof v.wordpressInstanceId === "string"
-          ? v.wordpressInstanceId
-          : undefined,
+      postArtifactId: str(v, "postArtifactId"),
+      postRepresentationRevisionId: str(v, "postRepresentationRevisionId"),
+      wordpressInstanceId: str(v, "wordpressInstanceId") || undefined,
+      title: str(v, "title") || undefined,
+      excerpt: str(v, "excerpt") || undefined,
     };
   }
-  return { wordpressDraftId: "", wordpressAdminUrl: "" };
+  return { postArtifactId: "", postRepresentationRevisionId: "" };
 }
 
 export default function BlogWordpressDraftConfirmRenderer({
@@ -60,70 +68,64 @@ export default function BlogWordpressDraftConfirmRenderer({
     onChangeRef.current = onChange;
   });
 
-  // Gate Confirm/Reject on a non-empty wordpressDraftId.
-  // If the renderer mounts before the agent has wired the draftId through
-  // the field-snapshot, emitting `{ approved, wordpressDraftId: "" }` would
-  // silently no-op the publish/delete primitive. Keep the buttons disabled
-  // until the identifier arrives.
-  const hasDraftId = v.wordpressDraftId.trim() !== "";
-  const buttonsDisabled = disabled === true || !hasDraftId;
+  // Gate Publish/Decline on a complete artifact reference.
+  // If the renderer mounts before the agent has wired the reference through
+  // the field-snapshot, emitting `{ approved, postArtifactId: "" }` would
+  // publish nothing while reading as a decision. Keep the buttons disabled
+  // until BOTH the artifact and the revision the person continued with are
+  // in hand — the revision is what is published, so a missing one is not a
+  // detail that can be filled in later.
+  const hasReference =
+    v.postArtifactId.trim() !== "" &&
+    v.postRepresentationRevisionId.trim() !== "";
+  const buttonsDisabled = disabled === true || !hasReference;
 
-  const handleConfirm = () => {
-    if (!hasDraftId) return;
+  const decide = (approved: boolean) => () => {
+    if (!hasReference) return;
     onChangeRef.current({
-      approved: true,
-      wordpressDraftId: v.wordpressDraftId,
-    });
-  };
-
-  const handleReject = () => {
-    if (!hasDraftId) return;
-    onChangeRef.current({
-      approved: false,
-      wordpressDraftId: v.wordpressDraftId,
+      approved,
+      postArtifactId: v.postArtifactId,
+      postRepresentationRevisionId: v.postRepresentationRevisionId,
     });
   };
 
   return (
     <Card className="border-line bg-surface backdrop-blur-none">
       <CardHeader>
-        <CardTitle>Confirm WordPress draft</CardTitle>
+        <CardTitle>Publish this post to WordPress?</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">
         <p className="text-foreground">
-          A WordPress draft has been created. Review it in WordPress admin, then
-          confirm to leave it in place (you publish from WP), or reject to
-          delete it from WordPress.
+          The post goes to the site exactly as you continued with it. Nothing is
+          created on the site until you publish here, so declining leaves the
+          site untouched. The page&rsquo;s address comes back onto the post
+          afterwards.
         </p>
-        {v.wordpressAdminUrl && (
-          <p>
-            <a
-              href={v.wordpressAdminUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-foreground underline-offset-4 hover:underline"
-            >
-              Open WordPress draft →
-            </a>
+        {v.title && (
+          <p className="text-foreground">
+            <span className="text-muted-foreground">Title:</span> {v.title}
+          </p>
+        )}
+        {v.excerpt && (
+          <p className="whitespace-pre-wrap text-muted-foreground">
+            {v.excerpt}
           </p>
         )}
         {v.wordpressInstanceId && (
-          <p className="text-muted-foreground">
-            Instance: {v.wordpressInstanceId}
-          </p>
+          <p className="text-muted-foreground">Site: {v.wordpressInstanceId}</p>
         )}
       </CardContent>
       <CardFooter className="flex justify-end gap-2">
         <Button
           variant="outline"
-          onClick={handleReject}
+          onClick={decide(false)}
           disabled={buttonsDisabled}
           type="button"
         >
-          Reject &amp; delete from WordPress
+          Do not publish
         </Button>
-        <Button onClick={handleConfirm} disabled={buttonsDisabled} type="button">
-          Confirm
+        <Button onClick={decide(true)} disabled={buttonsDisabled} type="button">
+          Publish to WordPress
         </Button>
       </CardFooter>
     </Card>
