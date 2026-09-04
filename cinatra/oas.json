@@ -3,7 +3,7 @@
   "component_type": "Flow",
   "id": "blog-wordpress-publish-agent-flow",
   "name": "Blog WordPress Publish Agent",
-  "description": "Creates a WordPress draft from a Cinatra blog post: starts via blog_post_publish_wordpress_start, polls blog_project_get until wordpressDraftGeneration.status === 'succeeded', then pauses at a HITL gate. On reject, calls blog_post_publish_wordpress_delete with deleteInWordPress=true to remove the draft from WordPress itself. Post body and hero image are artifact-canonical (@cinatra-ai/blog-post-artifact + @cinatra-ai/blog-image-artifact); blog_project_get returns refs only, and blog_post_publish_wordpress_start resolves bytes server-side. The agent flow is operational-metadata-only.",
+  "description": "Publishes the blog post ARTIFACT revision a person continued with to a connected WordPress site, and writes the site's address back onto that artifact. The flow takes an artifact reference (postArtifactId + postRepresentationRevisionId), never raw text and never a blog record: a deterministic step reads the artifact's record and the pinned revision's words through the host's dependency-scoped artifact reads (artifacts_get + artifact_content_read, admitted by this package's declared @cinatra-ai/blog-post-artifact edge); the orchestration step confirms with the person BEFORE anything reaches the site, then creates the page through the WordPress connector's own site catalogue (wordpress_site_tools_list + wordpress_site_tool_call); a second deterministic step merges the address onto the artifact's data through objects_update. The publish returns a receipt, never a new artifact.",
   "metadata": {
     "cinatra": {
       "type": "flow",
@@ -19,37 +19,46 @@
   },
   "inputs": [
     {
-      "title": "projectId",
+      "title": "postArtifactId",
       "type": "string"
     },
     {
-      "title": "postId",
+      "title": "postRepresentationRevisionId",
       "type": "string"
     },
     {
       "title": "wordpressInstanceId",
       "type": "string"
+    },
+    {
+      "title": "cinatra_run_id",
+      "type": "string",
+      "default": ""
     }
   ],
   "outputs": [
     {
-      "title": "projectId",
+      "title": "postArtifactId",
       "type": "string"
     },
     {
-      "title": "postId",
+      "title": "postRepresentationRevisionId",
       "type": "string"
     },
     {
-      "title": "wordpressDraftId",
+      "title": "publishedUrl",
       "type": "string"
     },
     {
-      "title": "wordpressAdminUrl",
+      "title": "publishedExternalId",
       "type": "string"
     },
     {
       "title": "approved",
+      "type": "boolean"
+    },
+    {
+      "title": "addressWritten",
       "type": "boolean"
     },
     {
@@ -65,7 +74,16 @@
       "$component_ref": "start"
     },
     {
+      "$component_ref": "read_post_record"
+    },
+    {
+      "$component_ref": "read_post_text"
+    },
+    {
       "$component_ref": "publish"
+    },
+    {
+      "$component_ref": "write_address"
     },
     {
       "$component_ref": "end"
@@ -74,9 +92,29 @@
   "control_flow_connections": [
     {
       "component_type": "ControlFlowEdge",
-      "name": "start_to_publish",
+      "name": "start_to_read_post_record",
       "from_node": {
         "$component_ref": "start"
+      },
+      "to_node": {
+        "$component_ref": "read_post_record"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "read_post_record_to_read_post_text",
+      "from_node": {
+        "$component_ref": "read_post_record"
+      },
+      "to_node": {
+        "$component_ref": "read_post_text"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "read_post_text_to_publish",
+      "from_node": {
+        "$component_ref": "read_post_text"
       },
       "to_node": {
         "$component_ref": "publish"
@@ -84,9 +122,19 @@
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "publish_to_end",
+      "name": "publish_to_write_address",
       "from_node": {
         "$component_ref": "publish"
+      },
+      "to_node": {
+        "$component_ref": "write_address"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "write_address_to_end",
+      "from_node": {
+        "$component_ref": "write_address"
       },
       "to_node": {
         "$component_ref": "end"
@@ -96,27 +144,87 @@
   "data_flow_connections": [
     {
       "component_type": "DataFlowEdge",
-      "name": "start_projectId_to_publish_projectId",
+      "name": "start_postArtifactId_to_read_post_record_postArtifactId",
       "source_node": {
         "$component_ref": "start"
       },
-      "source_output": "projectId",
+      "source_output": "postArtifactId",
       "destination_node": {
-        "$component_ref": "publish"
+        "$component_ref": "read_post_record"
       },
-      "destination_input": "projectId"
+      "destination_input": "postArtifactId"
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "start_postId_to_publish_postId",
+      "name": "start_cinatra_run_id_to_read_post_record_cinatra_run_id",
       "source_node": {
         "$component_ref": "start"
       },
-      "source_output": "postId",
+      "source_output": "cinatra_run_id",
+      "destination_node": {
+        "$component_ref": "read_post_record"
+      },
+      "destination_input": "cinatra_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_postArtifactId_to_read_post_text_postArtifactId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "postArtifactId",
+      "destination_node": {
+        "$component_ref": "read_post_text"
+      },
+      "destination_input": "postArtifactId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_postRepresentationRevisionId_to_read_post_text_postRepresentationRevisionId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "postRepresentationRevisionId",
+      "destination_node": {
+        "$component_ref": "read_post_text"
+      },
+      "destination_input": "postRepresentationRevisionId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_cinatra_run_id_to_read_post_text_cinatra_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "cinatra_run_id",
+      "destination_node": {
+        "$component_ref": "read_post_text"
+      },
+      "destination_input": "cinatra_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_postArtifactId_to_publish_postArtifactId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "postArtifactId",
       "destination_node": {
         "$component_ref": "publish"
       },
-      "destination_input": "postId"
+      "destination_input": "postArtifactId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_postRepresentationRevisionId_to_publish_postRepresentationRevisionId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "postRepresentationRevisionId",
+      "destination_node": {
+        "$component_ref": "publish"
+      },
+      "destination_input": "postRepresentationRevisionId"
     },
     {
       "component_type": "DataFlowEdge",
@@ -132,51 +240,123 @@
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "publish_projectId_to_end_projectId",
+      "name": "read_post_record_artifact_to_publish_postArtifact",
       "source_node": {
+        "$component_ref": "read_post_record"
+      },
+      "source_output": "artifact",
+      "destination_node": {
         "$component_ref": "publish"
       },
-      "source_output": "projectId",
-      "destination_node": {
-        "$component_ref": "end"
-      },
-      "destination_input": "projectId"
+      "destination_input": "postArtifact"
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "publish_postId_to_end_postId",
+      "name": "read_post_text_text_to_publish_postText",
       "source_node": {
+        "$component_ref": "read_post_text"
+      },
+      "source_output": "text",
+      "destination_node": {
         "$component_ref": "publish"
       },
-      "source_output": "postId",
-      "destination_node": {
-        "$component_ref": "end"
-      },
-      "destination_input": "postId"
+      "destination_input": "postText"
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "publish_wordpressDraftId_to_end_wordpressDraftId",
+      "name": "read_post_text_truncated_to_publish_truncated",
       "source_node": {
+        "$component_ref": "read_post_text"
+      },
+      "source_output": "truncated",
+      "destination_node": {
         "$component_ref": "publish"
       },
-      "source_output": "wordpressDraftId",
-      "destination_node": {
-        "$component_ref": "end"
-      },
-      "destination_input": "wordpressDraftId"
+      "destination_input": "truncated"
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "publish_wordpressAdminUrl_to_end_wordpressAdminUrl",
+      "name": "start_postArtifactId_to_write_address_postArtifactId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "postArtifactId",
+      "destination_node": {
+        "$component_ref": "write_address"
+      },
+      "destination_input": "postArtifactId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_cinatra_run_id_to_write_address_cinatra_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "cinatra_run_id",
+      "destination_node": {
+        "$component_ref": "write_address"
+      },
+      "destination_input": "cinatra_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "publish_addressPatch_to_write_address_addressPatch",
       "source_node": {
         "$component_ref": "publish"
       },
-      "source_output": "wordpressAdminUrl",
+      "source_output": "addressPatch",
+      "destination_node": {
+        "$component_ref": "write_address"
+      },
+      "destination_input": "addressPatch"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "publish_postArtifactId_to_end_postArtifactId",
+      "source_node": {
+        "$component_ref": "publish"
+      },
+      "source_output": "postArtifactId",
       "destination_node": {
         "$component_ref": "end"
       },
-      "destination_input": "wordpressAdminUrl"
+      "destination_input": "postArtifactId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "publish_postRepresentationRevisionId_to_end_postRepresentationRevisionId",
+      "source_node": {
+        "$component_ref": "publish"
+      },
+      "source_output": "postRepresentationRevisionId",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "postRepresentationRevisionId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "publish_publishedUrl_to_end_publishedUrl",
+      "source_node": {
+        "$component_ref": "publish"
+      },
+      "source_output": "publishedUrl",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "publishedUrl"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "publish_publishedExternalId_to_end_publishedExternalId",
+      "source_node": {
+        "$component_ref": "publish"
+      },
+      "source_output": "publishedExternalId",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "publishedExternalId"
     },
     {
       "component_type": "DataFlowEdge",
@@ -201,6 +381,18 @@
         "$component_ref": "end"
       },
       "destination_input": "summary"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "publish_addressWritten_to_end_addressWritten",
+      "source_node": {
+        "$component_ref": "publish"
+      },
+      "source_output": "addressWritten",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "addressWritten"
     }
   ],
   "$referenced_components": {
@@ -211,27 +403,130 @@
       "metadata": {
         "cinatra": {
           "required": [
-            "projectId",
-            "postId",
+            "postArtifactId",
+            "postRepresentationRevisionId",
             "wordpressInstanceId"
           ],
-          "hidden": []
+          "hidden": [
+            "cinatra_run_id"
+          ],
+          "inputContract": "An ARTIFACT REFERENCE, never raw text and never a blog record: the post artifact and the exact representation revision the person continued with."
         }
       },
       "inputs": [
         {
-          "title": "projectId",
+          "title": "postArtifactId",
           "type": "string"
         },
         {
-          "title": "postId",
+          "title": "postRepresentationRevisionId",
           "type": "string"
         },
         {
           "title": "wordpressInstanceId",
           "type": "string"
+        },
+        {
+          "title": "cinatra_run_id",
+          "type": "string",
+          "default": ""
         }
       ]
+    },
+    "read_post_record": {
+      "component_type": "ApiNode",
+      "id": "read_post_record",
+      "name": "Read the post artifact's record",
+      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+      "http_method": "POST",
+      "data": {
+        "tool": "artifacts_get",
+        "input": {
+          "artifactId": "{{ postArtifactId }}"
+        },
+        "agent_run_id": "{{ cinatra_run_id }}"
+      },
+      "inputs": [
+        {
+          "title": "postArtifactId",
+          "type": "string"
+        },
+        {
+          "title": "cinatra_run_id",
+          "type": "string",
+          "default": ""
+        }
+      ],
+      "outputs": [
+        {
+          "title": "artifact",
+          "type": "object"
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "read_only",
+          "requiresApproval": false,
+          "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
+          "description": "Deterministic dependency-scoped artifact read: the post artifact's own record (title, mime, latest revision). Admitted by this package's declared @cinatra-ai/blog-post-artifact edge, bound to the run's organisation and audited host-side. The orchestration step takes the page's title from it."
+        }
+      }
+    },
+    "read_post_text": {
+      "component_type": "ApiNode",
+      "id": "read_post_text",
+      "name": "Read the revision the person continued with",
+      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+      "http_method": "POST",
+      "data": {
+        "tool": "artifact_content_read",
+        "input": {
+          "artifactId": "{{ postArtifactId }}",
+          "representationRevisionId": "{{ postRepresentationRevisionId }}"
+        },
+        "agent_run_id": "{{ cinatra_run_id }}"
+      },
+      "inputs": [
+        {
+          "title": "postArtifactId",
+          "type": "string"
+        },
+        {
+          "title": "postRepresentationRevisionId",
+          "type": "string"
+        },
+        {
+          "title": "cinatra_run_id",
+          "type": "string",
+          "default": ""
+        }
+      ],
+      "outputs": [
+        {
+          "title": "text",
+          "type": "string"
+        },
+        {
+          "title": "representationRevisionId",
+          "type": "string"
+        },
+        {
+          "title": "mime",
+          "type": "string"
+        },
+        {
+          "title": "truncated",
+          "type": "boolean"
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "read_only",
+          "requiresApproval": false,
+          "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
+          "description": "Deterministic dependency-scoped content read of the PINNED representation revision — the words the person continued with, and the only body this agent publishes. The revision id is an input, never the latest revision, so an edit made after the person continued is not what reaches the site."
+        }
+      }
     },
     "publish": {
       "component_type": "ApiNode",
@@ -241,8 +536,8 @@
       "http_method": "POST",
       "data": {
         "agent_id": "blog-wordpress-publish-agent",
-        "system": "You are a blog-WordPress-publish orchestrator. Follow the instructions below step-by-step. Pause at HITL Gate `:draft-confirm` so the operator can confirm the WordPress draft or reject (which deletes the draft from WordPress). blog_project_get returns refs only — posts[].postArtifactId / posts[].imageArtifactId / posts[].linkedinDrafts[].contentArtifactId. The publish primitive resolves bytes server-side; your flow is operational-metadata-only. Return a single JSON object with {projectId, postId, wordpressDraftId, wordpressAdminUrl, approved, summary} — nothing else.\n\n# Blog WordPress Publish Agent\n\nYou orchestrate the blog → WordPress draft-create flow with one HITL gate. Take the 3 inputs, run the 4 steps below, return a single JSON object — nothing else.\n\n## Inputs\n\n- `projectId: string` — REQUIRED. The Cinatra blog project id.\n- `postId: string` — REQUIRED. The blog post id within the project.\n- `wordpressInstanceId: string` — REQUIRED. The connected WordPress instance id.\n\n## Tool discipline\n\nYou may call exactly these 3 MCP primitives:\n\n- `blog_project_get({ projectId })` — poll to read `wordpressDraftGeneration.status / adminUrl` and discover the `wordpressDraftId` in `posts[].wordpressDrafts[]`.\n- `blog_post_publish_wordpress_start({ projectId, postId, wordpressInstanceId })` — kick off WP draft creation (background job).\n- `blog_post_publish_wordpress_delete({ projectId, postId, wordpressDraftId, deleteInWordPress })` — on operator reject, delete from WordPress AND remove the local reference. Pass `deleteInWordPress: true`.\n\nDo not call any other MCP primitive. Do not call `blog_post_publish_wordpress_status` — that primitive needs a `wordpressDraftId` we don't have until the poll succeeds; use `blog_project_get` to poll instead.\n\n## Hard contract facts\n\n- `BackgroundProcessRunStatus = \"idle\" | \"running\" | \"succeeded\" | \"failed\" | \"stopped\"`. Watch for `\"succeeded\"`, NOT `\"completed\"`.\n- `BlogPostWordPressDraftState` has `adminUrl?: string` directly. There is no separate \"publish\" generation — WordPress draft creation IS the goal; the operator publishes from within WP admin.\n- WordPress drafts live at `post.wordpressDrafts[]`. Each entry has `{ id, wordpressInstanceId, wordpressInstanceName, wordpressPostId, adminUrl, status, ... }`.\n- **Body + hero image are artifact-canonical.** `blog_project_get` returns `posts[]` with refs only: `postArtifactId + postRepresentationRevisionId` for the body (`@cinatra-ai/blog-post-artifact`) and `imageArtifactId + imageRepresentationRevisionId` for the hero image (`@cinatra-ai/blog-image-artifact`). Inline `posts[].content` is not part of this flow. You do NOT need to read those bytes — `blog_post_publish_wordpress_start` resolves them server-side via the artifact reader helpers and uploads to WordPress. Your flow stays operational-metadata-only (projectId / postId / wordpressInstanceId in, projectId / postId / wordpressDraftId / wordpressAdminUrl / approved / summary out).\n\n## Step-by-step recipe\n\n### Step 1 — Kick off draft creation\n\n```\nblog_post_publish_wordpress_start({\n  projectId: <projectId>,\n  postId: <postId>,\n  wordpressInstanceId: <wordpressInstanceId>,\n})\n```\n\nOn throw: return `{ approved: false, summary: \"blog_post_publish_wordpress_start failed: <error>\" }`.\n\n### Step 2 — Poll until the draft is ready\n\nCadence: every 5 seconds. Max 60 cycles (5 minute cap).\n\n```\nblog_project_get({ projectId: <projectId> })\n```\n\nRead `result.wordpressDraftGeneration.status`.\n\n- `\"succeeded\"` — break out. Read `result.wordpressDraftGeneration.adminUrl` for the WP admin URL.\n- `\"failed\"` — return `{ approved: false, summary: \"WP draft creation failed: <message>\" }`.\n- `\"stopped\"` — return `{ approved: false, summary: \"WP draft creation was stopped.\" }`.\n- `\"running\"` or `\"idle\"` — continue polling.\n\nIf 60 cycles elapse: return `{ approved: false, summary: \"WP draft creation timed out after 5 minutes.\" }`.\n\n### Step 3 — Discover the draft entry\n\nFind the matching post:\n\n```\nconst post = result.posts.find(p => p.id === <postId>);\n```\n\nFind the newest matching draft entry in `post.wordpressDrafts[]` where:\n- `wordpressInstanceId === <wordpressInstanceId>`\n\nPick the latest by `updatedAt`. Capture `wordpressDraftId` from `entry.id` and `adminUrl` from `wordpressDraftGeneration.adminUrl` (fallback to `entry.adminUrl` if the generation-level field is missing).\n\nIf no entry matches: `{ approved: false, summary: \"No WordPress draft matched the input instance — possible state race.\" }`.\n\n### Step 4 — HITL Gate `:draft-confirm`\n\nEmit INTERRUPT with `x-renderer: \"@cinatra-ai/blog-wordpress-publish-agent:draft-confirm\"` and value:\n\n```json\n{\n  \"wordpressDraftId\": \"<draftId>\",\n  \"wordpressAdminUrl\": \"<adminUrl>\",\n  \"wordpressInstanceId\": \"<wordpressInstanceId>\"\n}\n```\n\nWait for operator approval. Possible shapes:\n\n- Confirmed: `{ approved: true, wordpressDraftId: \"<draftId>\" }`\n- Rejected: `{ approved: false, reason?: \"...\" }`\n\n### Step 4a — On confirm: leave draft, return\n\nReturn:\n```json\n{\n  \"projectId\": \"<projectId>\",\n  \"postId\": \"<postId>\",\n  \"wordpressDraftId\": \"<wordpressDraftId>\",\n  \"wordpressAdminUrl\": \"<adminUrl>\",\n  \"approved\": true,\n  \"summary\": \"WordPress draft created. Publish from WordPress admin when ready.\"\n}\n```\n\nDo NOT call any further primitive — the WP draft is the goal.\n\n### Step 4b — On reject: delete from WordPress + return\n\n```\nblog_post_publish_wordpress_delete({\n  projectId: <projectId>,\n  postId: <postId>,\n  wordpressDraftId: <wordpressDraftId>,\n  deleteInWordPress: true\n})\n```\n\nIf the delete throws, capture the error in `summary` but still return `approved: false`.\n\nReturn:\n```json\n{\n  \"projectId\": \"<projectId>\",\n  \"postId\": \"<postId>\",\n  \"wordpressDraftId\": \"<wordpressDraftId>\",\n  \"wordpressAdminUrl\": \"<adminUrl>\",\n  \"approved\": false,\n  \"summary\": \"Operator rejected; WordPress draft deleted. Reason: <reason or 'no reason'>\"\n}\n```\n\n## Error envelope\n\n```json\n{\n  \"projectId\": \"<projectId>\",\n  \"postId\": \"<postId>\",\n  \"wordpressDraftId\": \"<draftId or empty>\",\n  \"wordpressAdminUrl\": \"<adminUrl or empty>\",\n  \"approved\": false,\n  \"summary\": \"<one-line operator-readable explanation>\"\n}\n```",
-        "user": "{# pyagentspec-input-hint: {{ projectId }} {{ postId }} {{ wordpressInstanceId }} #}Create a WordPress draft for the blog post.\n\nInputs:\n- projectId: {{ projectId }}\n- postId: {{ postId }}\n- wordpressInstanceId: {{ wordpressInstanceId }}",
+        "system": "You are a blog-WordPress-publish orchestrator. Follow the instructions below step-by-step. Pause at HITL Gate `:draft-confirm` so the person confirms BEFORE the post goes to the site. Return a single JSON object with {postArtifactId, postRepresentationRevisionId, publishedUrl, publishedExternalId, addressPatch, addressWritten, approved, summary} — nothing else.\n\n# Blog WordPress Publish Agent\n\nYou publish ONE blog-post artifact revision to a connected WordPress site and hand the site's address back so the deterministic step behind you can write it onto the artifact.\n\n## What you are given\n\n- `postArtifactId: string` — the blog post artifact (`@cinatra-ai/blog-post-artifact:post`).\n- `postRepresentationRevisionId: string` — THE REVISION THE PERSON CONTINUED WITH. It is pinned; nothing later is published.\n- `postText: string` — the words of exactly that revision, already read for you by the deterministic step in front of you (the host's dependency-scoped artifact content read). This is the ONLY body you publish.\n- `postArtifact: object` — that artifact's own record (`title`, `mime`, timestamps). It is the artifact's CURRENT record, not the pinned revision, so it is not a source of published words. Take the page's title from the first heading line of `postText` — the revision the person continued with. Only when the pinned words carry no heading at all may you fall back to `postArtifact.title`, and the `summary` must then say the title came from the artifact's record rather than from the pinned revision.\n- `truncated: boolean` — whether the pinned read came back cut short. See Step 0.\n- `wordpressInstanceId: string` — the connected WordPress site.\n\nYou do NOT re-word, re-generate, summarise or extend `postText`. The bytes you publish are the bytes of the pinned revision.\n\n## Tool discipline\n\nYou may call exactly these 2 primitives, both on the WordPress connector:\n\n- `wordpress_site_tools_list({ instanceId })` — the site's own catalogue of abilities, each with its input schema.\n- `wordpress_site_tool_call({ instanceId, toolName, args })` — call one of them, with `args` matching the schema that listing gave you.\n\nCall NOTHING else. In particular: you never read or write an artifact yourself (the steps around you do that through the host's own primitives), and you never reach a blog record.\n\n## Step-by-step recipe\n\n### Step 0 — the pinned words must be whole\n\nWhen `truncated` is true the read came back cut short, so what you hold is NOT the whole pinned revision. Publish nothing, ask nothing, and return the envelope of Step 5 with `approved: false`, `publishedUrl: \"\"`, `publishedExternalId: \"\"`, `addressPatch: {}`, `addressWritten: false` and a `summary` naming the truncation. Never publish a cut-short body, and never call it the pinned revision.\n\n### Step 1 — the confirmation, BEFORE anything reaches the site\n\nEmit INTERRUPT with `x-renderer: \"@cinatra-ai/blog-wordpress-publish-agent:draft-confirm\"` and value:\n\n```json\n{\n  \"postArtifactId\": \"<postArtifactId>\",\n  \"postRepresentationRevisionId\": \"<postRepresentationRevisionId>\",\n  \"wordpressInstanceId\": \"<wordpressInstanceId>\",\n  \"title\": \"<the title you resolved>\",\n  \"excerpt\": \"<the first 400 characters of postText>\"\n}\n```\n\nWait for the person. Possible shapes:\n\n- Confirmed: `{ approved: true, postArtifactId: \"<postArtifactId>\" }`\n- Declined: `{ approved: false, reason?: \"...\" }`\n\nOn DECLINED, publish nothing and return the envelope of Step 5 with `approved: false`, `publishedUrl: \"\"`, `publishedExternalId: \"\"`, `addressPatch: {}` and a one-line `summary` naming the decline. Nothing was created, so there is nothing to remove.\n\n### Step 2 — find the site's ability that creates a post\n\n```\nwordpress_site_tools_list({ instanceId: <wordpressInstanceId> })\n```\n\nChoose the ability that creates a post/page from a title and a body AND can make it PUBLICLY VISIBLE — its advertised input schema must carry the argument that publishes the page (a WordPress `status` of `publish`, or whatever that schema names). Match on the advertised input schema, never on a name you assumed. An ability whose only outcome is a draft does NOT satisfy this step: a draft has no public address, so there is nothing to write back for it. If the listing offers no such ability, return the envelope with `approved: false`, `addressPatch: {}`, `addressWritten: false` and a summary naming the site and what was missing.\n\n### Step 3 — create the page\n\n```\nwordpress_site_tool_call({\n  instanceId: <wordpressInstanceId>,\n  toolName: <the ability you chose>,\n  args: <its advertised arguments, carrying the title, postText, and the status value that publishes the page publicly>,\n})\n```\n\nFrom the result read:\n\n- the page's public address → `publishedUrl`\n- the site's own id for that page → `publishedExternalId`\n\nIf the call throws, returns no address, or returns a page the site does not report as publicly published (a draft, pending or private state), return the envelope with `approved: true`, `publishedUrl: \"\"`, `addressPatch: {}`, `addressWritten: false` and a summary naming the failure — the person did confirm; the site write is what failed. Only a page the site reports as publicly published carries an address worth writing back.\n\n### Step 4 — build the write-back patch\n\nThe deterministic step behind you merges `addressPatch` onto the post artifact's own data through the host's write-back primitive. Build it with EXACTLY these three keys and no others:\n\n```json\n{\n  \"wordpressPublishedUrl\": \"<publishedUrl>\",\n  \"wordpressPublishedExternalId\": \"<publishedExternalId>\",\n  \"wordpressPublishedRevisionId\": \"<postRepresentationRevisionId>\"\n}\n```\n\nWhen nothing was published — declined, no ability, a failed call, or no address in the result — `addressPatch` is `{}` exactly. An empty patch merges nothing, so no address, no half address and no empty string is ever written onto the artifact. Never guess an address, and never put one in the patch that the site did not return. The patch's key space is CLOSED: those three keys and nothing else may ever appear in it. Never add a key of your own, and never a field of the artifact itself (`title`, `mime`, `content` or any other) — the step behind you merges the patch straight onto the artifact's own data, so a key you invent is written onto the artifact. Every value must be a non-empty string the site actually returned (the revision id being the one you were given). A key you cannot fill that way is not put in the patch, and a patch you cannot fill completely is `{}`. Set `addressWritten` to true only when you built the complete three-key patch, and false in every other case — that is what the run reports about the address.\n\n### Step 5 — return\n\n```json\n{\n  \"postArtifactId\": \"<postArtifactId>\",\n  \"postRepresentationRevisionId\": \"<postRepresentationRevisionId>\",\n  \"publishedUrl\": \"<publishedUrl or empty>\",\n  \"publishedExternalId\": \"<publishedExternalId or empty>\",\n  \"addressPatch\": { },\n  \"addressWritten\": false,\n  \"approved\": true,\n  \"summary\": \"<one-line explanation a person can read>\"\n}\n```\n",
+        "user": "{# pyagentspec-input-hint: {{ postArtifactId }} {{ postRepresentationRevisionId }} {{ wordpressInstanceId }} {{ postText }} {{ postArtifact }} #}Publish the pinned revision of the blog post artifact to the connected WordPress site.\n\nInputs:\n- postArtifactId: {{ postArtifactId }}\n- postRepresentationRevisionId: {{ postRepresentationRevisionId }}\n- wordpressInstanceId: {{ wordpressInstanceId }}\n- postArtifact: {{ postArtifact }}\n- postText: {{ postText }}",
         "cinatra_llm": {
           "preferredProvider": "openai",
           "preferredModel": "gpt-5.5"
@@ -250,34 +545,54 @@
       },
       "inputs": [
         {
-          "title": "projectId",
+          "title": "postArtifactId",
           "type": "string"
         },
         {
-          "title": "postId",
+          "title": "postRepresentationRevisionId",
           "type": "string"
         },
         {
           "title": "wordpressInstanceId",
           "type": "string"
+        },
+        {
+          "title": "postText",
+          "type": "string"
+        },
+        {
+          "title": "postArtifact",
+          "type": "object"
+        },
+        {
+          "title": "truncated",
+          "type": "boolean"
         }
       ],
       "outputs": [
         {
-          "title": "projectId",
+          "title": "postArtifactId",
           "type": "string"
         },
         {
-          "title": "postId",
+          "title": "postRepresentationRevisionId",
           "type": "string"
         },
         {
-          "title": "wordpressDraftId",
+          "title": "publishedUrl",
           "type": "string"
         },
         {
-          "title": "wordpressAdminUrl",
+          "title": "publishedExternalId",
           "type": "string"
+        },
+        {
+          "title": "addressPatch",
+          "type": "object"
+        },
+        {
+          "title": "addressWritten",
+          "type": "boolean"
         },
         {
           "title": "approved",
@@ -290,10 +605,64 @@
       ],
       "metadata": {
         "cinatra": {
-          "riskClass": "write_safe",
+          "riskClass": "write",
           "requiresApproval": false,
           "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
-          "description": "Single ApiNode -> /api/llm-bridge. metadata.cinatra.toolboxes is INTENTIONALLY OMITTED so the LLM reaches blog_project_get, blog_post_publish_wordpress_{start,delete,cancel} via the injected Cinatra self-MCP. The HITL gate (draft-confirm) is declared at root metadata.cinatra.hitlScreens and emitted via the standard A2UI INTERRUPT mechanism."
+          "description": "Single ApiNode -> /api/llm-bridge. metadata.cinatra.toolboxes is INTENTIONALLY OMITTED so the model reaches the WordPress connector's wordpress_site_tools_list / wordpress_site_tool_call through the injected Cinatra self-MCP. The HITL gate (draft-confirm) is declared at root metadata.cinatra.hitlScreens and emitted via the standard A2UI INTERRUPT mechanism; it asks the person BEFORE the site write, so a decline leaves nothing behind to remove. The node emits addressPatch — the three literal address keys, or {} when nothing was published — which the write_address step merges onto the artifact."
+        }
+      }
+    },
+    "write_address": {
+      "component_type": "ApiNode",
+      "id": "write_address",
+      "name": "Write the address back onto the post artifact",
+      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+      "http_method": "POST",
+      "data": {
+        "tool": "objects_update",
+        "input": {
+          "objectId": "{{ postArtifactId }}",
+          "data": "{{ addressPatch }}"
+        },
+        "agent_run_id": "{{ cinatra_run_id }}"
+      },
+      "inputs": [
+        {
+          "title": "postArtifactId",
+          "type": "string"
+        },
+        {
+          "title": "addressPatch",
+          "type": "object"
+        },
+        {
+          "title": "cinatra_run_id",
+          "type": "string",
+          "default": ""
+        }
+      ],
+      "outputs": [
+        {
+          "title": "ok",
+          "type": "boolean"
+        },
+        {
+          "title": "changeSetId",
+          "type": "string"
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "write",
+          "requiresApproval": false,
+          "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
+          "description": "THE WRITE-BACK, and the only road it takes: objects_update merges the patch into the SAME artifact row's data (objects.data) — never a side channel, never a new artifact, never a blog record. The merge is shallow at the top level, which is why the address keys are flat and destination-prefixed: a second destination's write cannot clobber this one. An empty patch (nothing published) merges nothing.",
+          "addressPatchKeys": [
+            "wordpressPublishedUrl",
+            "wordpressPublishedExternalId",
+            "wordpressPublishedRevisionId"
+          ],
+          "addressPatchRule": "The patch's key space is closed to those keys. objects_update merges every top-level key it is given straight onto the artifact's own data, so a key outside this list would land on the artifact; an incomplete patch is {} exactly, which merges nothing. A runtime allowlist needs a deterministic write-back seam on the host side; until there is one, this declaration plus the orchestration recipe is the contract, and the pack's own suite asserts both."
         }
       }
     },
@@ -303,27 +672,32 @@
       "name": "End",
       "outputs": [
         {
-          "title": "projectId",
+          "title": "postArtifactId",
           "type": "string",
           "default": ""
         },
         {
-          "title": "postId",
+          "title": "postRepresentationRevisionId",
           "type": "string",
           "default": ""
         },
         {
-          "title": "wordpressDraftId",
+          "title": "publishedUrl",
           "type": "string",
           "default": ""
         },
         {
-          "title": "wordpressAdminUrl",
+          "title": "publishedExternalId",
           "type": "string",
           "default": ""
         },
         {
           "title": "approved",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "title": "addressWritten",
           "type": "boolean",
           "default": false
         },

@@ -1,9 +1,12 @@
 {
   "name": "@cinatra-ai/blog-wordpress-publish-agent",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "license": "Apache-2.0",
-  "description": "Creates a WordPress draft from a Cinatra blog post: starts the draft creation job, polls blog_project_get until ready, then pauses for HITL operator confirmation. On reject, deletes the draft from WordPress.",
+  "description": "Publishes the blog post ARTIFACT revision a person continued with to a connected WordPress site and writes the site's address back onto that artifact. Takes an artifact reference (postArtifactId + postRepresentationRevisionId), confirms with the person before anything reaches the site, creates the page through the WordPress connector's own site catalogue, and merges the address onto the artifact's data. Returns a receipt, never a new artifact.",
   "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
   "files": [
     "cinatra",
     "src"
@@ -65,19 +68,23 @@
     ],
     "consumes": [
       {
-        "primitive": "blog_post_publish_wordpress_start",
+        "primitive": "artifacts_get",
         "requirement": "required"
       },
       {
-        "primitive": "blog_post_publish_wordpress_delete",
+        "primitive": "artifact_content_read",
         "requirement": "required"
       },
       {
-        "primitive": "blog_post_publish_wordpress_status",
+        "primitive": "objects_update",
         "requirement": "required"
       },
       {
-        "primitive": "blog_project_get",
+        "primitive": "wordpress_site_tools_list",
+        "requirement": "required"
+      },
+      {
+        "primitive": "wordpress_site_tool_call",
         "requirement": "required"
       }
     ],
