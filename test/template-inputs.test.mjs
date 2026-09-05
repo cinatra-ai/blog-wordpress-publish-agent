@@ -9,10 +9,9 @@
 // not count as a reference. And it matches only a COMPLETE expression, closing
 // braces included, so a half-written `{{ name |` cannot pass for a use.
 
-import { test } from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 
-import { components } from "./oas-contract.test.mjs";
+import { components } from "./__tests__/oas-contract.mjs";
 
 const REFERENCE = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\|[^{}]*?)?\}\}/g;
 
@@ -48,39 +47,36 @@ test("every ApiNode input is referenced in that node's template body", () => {
       if (!referenced.has(input.title)) dead.push(`${id}.${input.title}`);
     }
   }
-  assert.deepEqual(dead, []);
+  expect(dead).toEqual([]);
 });
 
 test("the flow has ApiNodes with inputs to check at all", () => {
   const withInputs = apiNodes().filter(([, c]) => (c.inputs ?? []).length > 0);
-  assert.ok(withInputs.length >= 4);
+  expect(withInputs.length >= 4).toBeTruthy();
 });
 
 test("a complete expression counts as a reference, bare or filtered", () => {
-  assert.deepEqual([...referencedNames({ user: "x {{ truncated }} y" })], [
-    "truncated",
-  ]);
-  assert.deepEqual(
-    [...referencedNames({ user: "x {{ truncated | tojson }} y" })],
+  expect([...referencedNames({ user: "x {{ truncated }} y" })]).toEqual(
     ["truncated"],
   );
-  assert.deepEqual([...referencedNames({ user: "{{postText}}" })], [
-    "postText",
-  ]);
+  expect([...referencedNames({ user: "x {{ truncated | tojson }} y" })]).toEqual(
+    ["truncated"],
+  );
+  expect([...referencedNames({ user: "{{postText}}" })]).toEqual(["postText"]);
 });
 
 test("a half-written expression is not a reference", () => {
-  assert.deepEqual([...referencedNames({ user: "x {{ truncated | y" })], []);
-  assert.deepEqual([...referencedNames({ user: "x {{ truncated y" })], []);
+  expect([...referencedNames({ user: "x {{ truncated | y" })]).toEqual([]);
+  expect([...referencedNames({ user: "x {{ truncated y" })]).toEqual([]);
 });
 
 test("a name outside the templated payload is not a reference", () => {
   // Only the payload's string leaves are read: not an object key, and not the
   // prose a node carries beside its payload.
-  assert.deepEqual([...referencedNames({ "{{ truncated }}": "x" })], []);
+  expect([...referencedNames({ "{{ truncated }}": "x" })]).toEqual([]);
   const node = {
     data: { input: { objectId: "{{ postArtifactId }}" } },
     metadata: { cinatra: { description: "reads {{ truncated }} first" } },
   };
-  assert.deepEqual([...referencedNames(node.data)], ["postArtifactId"]);
+  expect([...referencedNames(node.data)]).toEqual(["postArtifactId"]);
 });
