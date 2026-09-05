@@ -1,11 +1,16 @@
 // Shared readers for this package's declarations. The pack ships no runtime of
 // its own — an agent's product IS its manifest and its flow — so the suites
 // read those two files and assert the contract the pipeline binds against.
+//
+// This is a MODULE the suites import, never a suite of its own: it carries no
+// `.test.` in its name, so the runner does not try to collect it, and it sits
+// under `__tests__/` so the product-file rules still read it as test material
+// rather than as something this package ships.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const root = new URL("../", import.meta.url);
+const root = new URL("../../", import.meta.url);
 
 export const manifest = JSON.parse(
   readFileSync(fileURLToPath(new URL("package.json", root)), "utf8"),

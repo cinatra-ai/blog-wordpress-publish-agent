@@ -4,17 +4,16 @@
 // else owns — so both sides declare an empty ARRAY, never a missing key and
 // never a word standing in for one.
 
-import { test } from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 
-import { manifest, oas } from "./oas-contract.test.mjs";
+import { manifest, oas } from "./__tests__/oas-contract.mjs";
 
 test("the flow's produces mirrors the manifest's, as an array", () => {
-  assert.ok(Array.isArray(manifest.cinatra.produces));
-  assert.ok(Array.isArray(oas.metadata.cinatra.produces));
-  assert.deepEqual(oas.metadata.cinatra.produces, manifest.cinatra.produces);
+  expect(Array.isArray(manifest.cinatra.produces)).toBeTruthy();
+  expect(Array.isArray(oas.metadata.cinatra.produces)).toBeTruthy();
+  expect(oas.metadata.cinatra.produces).toEqual(manifest.cinatra.produces);
 });
 
 test("this agent declares that it produces nothing", () => {
-  assert.deepEqual(manifest.cinatra.produces, []);
+  expect(manifest.cinatra.produces).toEqual([]);
 });
