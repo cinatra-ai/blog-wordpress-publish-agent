@@ -62,7 +62,14 @@
     "**/trust-gate/**",
     "**/signature-gate/**",
     "**/capability-registry/**",
-    "**/transport-registry/**"
+    "**/transport-registry/**",
+    "docs-site/astro.config.mjs",
+    "docs-site/src/content.config.ts",
+    "docs-site/integrations-registry.json",
+    "**/integrations-registry.json",
+    "scripts/sync-docs.mjs",
+    "scripts/docs-contract-gate.mjs",
+    "scripts/lib/docs-contract-rules.mjs"
   ],
   "lastAuditedAt": "2026-09-15",
   "auditEvidence": "2026-09-15, the birth of this suite on its own pull request (engineering#670, under engineering#669): every context listed here is read on that pull request's head — the four the repository's main ruleset requires plus the truthful-attribution-gate — and must conclude green there, and each pinned sha was read from this repository's own caller workflow under .github/workflows/ at head 283f929a8f746614137159123800ef3c64295ac5, never copied from another repository's suite."
