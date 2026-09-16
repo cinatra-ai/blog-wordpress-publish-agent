@@ -4,14 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 
 import type { FieldRendererProps } from "@cinatra-ai/sdk-ui/field-renderer-props";
 
-import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
+import { Button, Card, CardContent, CardFooter, CardHeader, CardTitle } from "@cinatra-ai/design-primitives";
 
 // HITL renderer for @cinatra-ai/blog-wordpress-publish-agent, binding
 // "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm" (kind
