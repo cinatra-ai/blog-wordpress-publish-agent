@@ -156,6 +156,46 @@ test("the patch carries exactly the three address keys", () => {
   expect(patchOutput.type).toBe("object");
 });
 
+test("the patch's three members are declared, not left to an empty object level", () => {
+  const patchOutput = bridgeNode().outputs.find((o) => o.title === "addressPatch");
+  expect(
+    patchOutput.type,
+    "the plain type stays readable — an output without one makes the step derive nothing at all",
+  ).toBe("object");
+  const schema = patchOutput.json_schema;
+  expect(
+    schema,
+    "an object output that declares no members is asked for as a closed, empty object, so the address never reaches the artifact",
+  ).toBeTruthy();
+  expect(schema.type).toBe("object");
+  expect(
+    Object.keys(schema.properties ?? {}),
+    "the declared members are exactly the three address keys the recipe names",
+  ).toEqual(ADDRESS_KEYS);
+  for (const key of ADDRESS_KEYS) {
+    expect(
+      schema.properties[key].type,
+      `${key} is a string the site returned`,
+    ).toBe("string");
+    expect(
+      (schema.properties[key].description ?? "").length > 0,
+      `${key} says in words what it carries`,
+    ).toBeTruthy();
+  }
+  expect(
+    schema.required,
+    "every declared member is required — the contract derived from this declaration carries no optional key",
+  ).toEqual(ADDRESS_KEYS);
+  expect(
+    patchOutput.description ?? "",
+    "the output's own description names the gap the closed contract cannot express, so decision (b) is recorded and not merely implied",
+  ).toMatch(/cannot express the empty patch/);
+  expect(
+    patchOutput.description ?? "",
+    "and it says plainly that the empty-patch run cannot satisfy both at once",
+  ).toMatch(/No answer can satisfy both at once/);
+});
+
 test("nothing published means nothing written", () => {
   expect(
     bridgeNode().data.system,

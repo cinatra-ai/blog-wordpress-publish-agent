@@ -589,7 +589,30 @@
         },
         {
           "title": "addressPatch",
-          "type": "object"
+          "type": "object",
+          "description": "The write-back patch the deterministic step behind this one merges onto the post artifact's own data. Its three members are the closed key space this step's own recipe already names, each a non-empty string: the two address members exactly as the site returned them, and the revision member the pinned revision this step was given. Declaring them is what makes the address reach the artifact at all: an object level with no declared members is asked for as a closed, empty object, so the patch came back with nothing in it and the write merged nothing. THE GAP THIS DECLARATION DOES NOT CLOSE, named rather than hidden: the contract derived from this declaration requires every declared member and admits no other key, so it cannot express the empty patch the recipe still asks for when nothing was published — declined, no ability, a failed call, or no address in the result. No answer can satisfy both at once: on such a run the contract leaves no shape that is also the empty patch, so the two cannot be reconciled inside this declaration and the conflict is recorded here rather than papered over. That case stays governed by the recipe's own words, which forbid a guessed address and forbid an empty or half value in the patch, because the write merges every top-level key it is given straight onto the artifact; and what the run reports about the address remains addressWritten, which is true only when the complete three-key patch was built.",
+          "json_schema": {
+            "type": "object",
+            "properties": {
+              "wordpressPublishedUrl": {
+                "type": "string",
+                "description": "The address of the page the site reports as publicly published — the address a person can open. Taken from what the site returned, never guessed, and never the admin address of a draft."
+              },
+              "wordpressPublishedExternalId": {
+                "type": "string",
+                "description": "The site's own identifier for that published page, exactly as the site returned it."
+              },
+              "wordpressPublishedRevisionId": {
+                "type": "string",
+                "description": "The pinned representation revision that was published — the revision the person continued with, as it was given to this step."
+              }
+            },
+            "required": [
+              "wordpressPublishedUrl",
+              "wordpressPublishedExternalId",
+              "wordpressPublishedRevisionId"
+            ]
+          }
         },
         {
           "title": "addressWritten",
