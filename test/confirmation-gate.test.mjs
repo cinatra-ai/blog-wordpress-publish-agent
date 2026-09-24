@@ -86,7 +86,7 @@ test("every control path from the start to publish passes through the gate", () 
 });
 
 // ---------------------------------------------------------------------------
-// (ii) the gate has the shape the host mounts (OAS-RUNTIME-013)
+// (ii) the gate has the shape the host mounts
 // ---------------------------------------------------------------------------
 
 test("the gate raises this pack's screen as an approval gate", () => {
