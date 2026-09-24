@@ -55,7 +55,12 @@ test("the flow takes an artifact reference, not a blog record", () => {
 test("the artifact reference is what the person is asked for", () => {
   const required = node("start").metadata.cinatra.required;
   expect(required).toEqual(
-    ["postArtifactId", "postRepresentationRevisionId", "wordpressInstanceId"],
+    [
+      "postArtifactId",
+      "postRepresentationRevisionId",
+      "wordpressInstanceId",
+      "wordpressSiteName",
+    ],
   );
 });
 

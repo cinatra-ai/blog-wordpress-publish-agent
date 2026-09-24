@@ -120,6 +120,7 @@ test("every declared gate input is a unique plain identifier fed by its edge", (
     postArtifactId: ["start", "postArtifactId"],
     postRepresentationRevisionId: ["start", "postRepresentationRevisionId"],
     wordpressInstanceId: ["start", "wordpressInstanceId"],
+    wordpressSiteName: ["start", "wordpressSiteName"],
     postText: ["read_post_text", "text"],
     postArtifact: ["read_post_record", "artifact"],
   };
@@ -275,4 +276,100 @@ test("the screen's excerpt is the first 400 characters of the pinned words", asy
     screenExcerpt({ excerpt: "Given", postText: long }),
     "an excerpt the screen was given is kept",
   ).toBe("Given");
+});
+
+// The words beneath the title read as the post will appear, with no markup character.
+test("the screen's excerpt draws no Markdown marker", async () => {
+  const { screenExcerpt } = await decisionModule();
+  const out = screenExcerpt({
+    postText:
+      "Opening words here.\n\n## The *real* cost\n\nRun `cinatra upgrade` after reading [the upgrade guide](https://example.com/guide). It takes __hours__.",
+  });
+  for (const marker of ["#", "*", "_", "`"]) {
+    expect(out.includes(marker), `no ${marker} is drawn`).toBe(false);
+  }
+  for (const word of [
+    "Opening words here.",
+    "The real cost",
+    "cinatra upgrade",
+    "the upgrade guide",
+    "hours",
+  ]) {
+    expect(out, `${word} is kept`).toContain(word);
+  }
+});
+
+// The title stands on the title line, so the words beneath do not repeat it.
+test("the screen's excerpt does not repeat the title", async () => {
+  const { screenExcerpt } = await decisionModule();
+  const out = screenExcerpt({
+    postText:
+      "# Why self-hosted upgrades take longer than planned\n\nA self-hosted upgrade looks small on paper. In practice the team has to read the release notes.",
+  });
+  expect(out.startsWith("A self-hosted upgrade looks small on paper.")).toBe(true);
+  expect(out.includes("Why self-hosted upgrades")).toBe(false);
+  expect(
+    screenExcerpt({
+      title: "Given title",
+      postText: "## A different first line\n\nThe body.",
+    }),
+    "a first line that differs from the title keeps its words",
+  ).toBe("A different first line The body.");
+});
+
+// Line breaks and blank lines read as one run of words.
+test("a plain post reads as one run of words", async () => {
+  const { screenExcerpt } = await decisionModule();
+  expect(screenExcerpt({ postText: "Line one.\n\nLine two." })).toBe(
+    "Line one. Line two.",
+  );
+});
+
+// The site is named as the person knows it, never by the connection id.
+test("the screen names the site in words, never by its connection id", async () => {
+  const { screenSite } = await decisionModule();
+  expect(typeof screenSite, "screenSite is exported").toBe("function");
+  expect(
+    screenSite({
+      wordpressSiteName: "blog.acme.example",
+      wordpressInstanceId: "8d44907a-391d-44f4-93ee-2ef989f4f721",
+    }),
+  ).toBe("blog.acme.example");
+  expect(screenSite({ wordpressSiteName: "https://blog.acme.example/" })).toBe(
+    "blog.acme.example",
+  );
+  expect(screenSite({ wordpressInstanceId: "proof" })).toBe("");
+});
+
+// The card's site line draws the name in words and never the connection id.
+test("the renderer draws the site line from the site in words", () => {
+  const tsx = source("src/renderers/draft-confirm.tsx");
+  expect(tsx).toContain("Site: {v.site}");
+  expect(tsx.includes("wordpressInstanceId")).toBe(false);
+});
+
+// Inline code, words in any script, nested list markers and links with parentheses keep their words.
+test("the screen's excerpt keeps the words around every stripped marker", async () => {
+  const { screenExcerpt } = await decisionModule();
+  expect(screenExcerpt({ postText: "```literal``` is inline code." })).toBe(
+    "literal is inline code.",
+  );
+  expect(screenExcerpt({ postText: "变量_名_称 and é_foo_é stay" })).toBe(
+    "变量_名_称 and é_foo_é stay",
+  );
+  expect(
+    screenExcerpt({ title: "Other", postText: "- ## Section\n- > Quoted words" }),
+  ).toBe("Section Quoted words");
+  expect(
+    screenExcerpt({ postText: "Read [the guide](https://example.com/a_(b))." }),
+  ).toBe("Read the guide.");
+});
+
+// A very long line with unbalanced markers still reads at once.
+test("the screen's excerpt stays quick on a very long line", async () => {
+  const { screenExcerpt } = await decisionModule();
+  const started = Date.now();
+  const out = screenExcerpt({ postText: "[".repeat(160000) });
+  expect(Array.from(out).length).toBe(400);
+  expect(Date.now() - started).toBeLessThan(1000);
 });

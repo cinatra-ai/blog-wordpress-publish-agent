@@ -32,6 +32,10 @@
       "type": "string"
     },
     {
+      "title": "wordpressSiteName",
+      "type": "string"
+    },
+    {
       "title": "cinatra_run_id",
       "type": "string",
       "default": ""
@@ -326,6 +330,18 @@
     },
     {
       "component_type": "DataFlowEdge",
+      "name": "start_wordpressSiteName_to_confirm_gate_wordpressSiteName",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "wordpressSiteName",
+      "destination_node": {
+        "$component_ref": "confirm_gate"
+      },
+      "destination_input": "wordpressSiteName"
+    },
+    {
+      "component_type": "DataFlowEdge",
       "name": "read_post_text_text_to_confirm_gate_postText",
       "source_node": {
         "$component_ref": "read_post_text"
@@ -491,7 +507,8 @@
           "required": [
             "postArtifactId",
             "postRepresentationRevisionId",
-            "wordpressInstanceId"
+            "wordpressInstanceId",
+            "wordpressSiteName"
           ],
           "hidden": [
             "cinatra_run_id"
@@ -510,6 +527,10 @@
         },
         {
           "title": "wordpressInstanceId",
+          "type": "string"
+        },
+        {
+          "title": "wordpressSiteName",
           "type": "string"
         },
         {
@@ -625,7 +646,7 @@
           "surfaceGateInputs": true,
           "renderer": "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm",
           "a2uiSurfaceId": "blog-wordpress-publish:draft-confirm:input",
-          "description": "Every publish PAUSES here before anything reaches the site. surfaceGateInputs surfaces the artifact reference (postArtifactId + postRepresentationRevisionId), the site (wordpressInstanceId), the pinned revision's words (postText) and the artifact's record (postArtifact) to the pack's @cinatra-ai/blog-wordpress-publish-agent:draft-confirm screen as the interrupt payload. The person's answer comes back as userResponse, the JSON text of { approved, postArtifactId, postRepresentationRevisionId }, and feeds the publish node's confirmation input. There is no control-flow edge that reaches the publish node except through this gate, so a resume cannot skip the confirmation."
+          "description": "Every publish PAUSES here before anything reaches the site. surfaceGateInputs surfaces the artifact reference (postArtifactId + postRepresentationRevisionId), the site (wordpressInstanceId) and the site named in words (wordpressSiteName), the pinned revision's words (postText) and the artifact's record (postArtifact) to the pack's @cinatra-ai/blog-wordpress-publish-agent:draft-confirm screen as the interrupt payload. The person's answer comes back as userResponse, the JSON text of { approved, postArtifactId, postRepresentationRevisionId }, and feeds the publish node's confirmation input. There is no control-flow edge that reaches the publish node except through this gate, so a resume cannot skip the confirmation."
         }
       },
       "inputs": [
@@ -639,6 +660,10 @@
         },
         {
           "title": "wordpressInstanceId",
+          "type": "string"
+        },
+        {
+          "title": "wordpressSiteName",
           "type": "string"
         },
         {

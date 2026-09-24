@@ -2,7 +2,7 @@
 
 Publish a blog post to your WordPress site from the post itself — the exact version you continued with — and get the page's address back on the post. You confirm before anything reaches the site, so declining leaves the site untouched.
 
-To use this agent, connect a WordPress site to your Cinatra workspace via the marketplace, then trigger the agent with three required inputs: a `postArtifactId` (the blog post), a `postRepresentationRevisionId` (the version of it you continued with), and a `wordpressInstanceId` (the connected WordPress site). The agent reads that pinned version's words through Cinatra's own artifact reads, shows you what will go out, and only then creates the page through the WordPress connector's site catalogue.
+To use this agent, connect a WordPress site to your Cinatra workspace via the marketplace, then trigger the agent with four required inputs: a `postArtifactId` (the blog post), a `postRepresentationRevisionId` (the version of it you continued with), a `wordpressInstanceId` (the connected WordPress site) and a `wordpressSiteName` (its address in words, e.g. blog.acme.example). The agent reads that pinned version's words through Cinatra's own artifact reads, shows you what will go out, and only then creates the page through the WordPress connector's site catalogue.
 
 On confirmation the page is created and the agent writes the address back onto the post itself, under `wordpressPublishedUrl`, beside the site's own id for the page (`wordpressPublishedExternalId`) and the version that was published (`wordpressPublishedRevisionId`). The agent returns those as `publishedUrl`, `publishedExternalId` and `approved`; it creates no new document of its own — a publish returns a receipt.
 

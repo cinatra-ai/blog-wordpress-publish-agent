@@ -9,6 +9,7 @@ import { Button, Card, CardContent, CardFooter, CardHeader, CardTitle } from "@c
 import {
   draftConfirmDecision,
   screenExcerpt,
+  screenSite,
   screenTitle,
 } from "./draft-confirm-decision";
 
@@ -32,7 +33,7 @@ import {
 type DraftConfirmValue = {
   postArtifactId: string;
   postRepresentationRevisionId: string;
-  wordpressInstanceId?: string;
+  site?: string;
   title?: string;
   excerpt?: string;
 };
@@ -47,7 +48,7 @@ function toDraftConfirmValue(value: unknown): DraftConfirmValue {
     return {
       postArtifactId: str(v, "postArtifactId"),
       postRepresentationRevisionId: str(v, "postRepresentationRevisionId"),
-      wordpressInstanceId: str(v, "wordpressInstanceId") || undefined,
+      site: screenSite(v) || undefined,
       title: screenTitle(v) || undefined,
       excerpt: screenExcerpt(v) || undefined,
     };
@@ -112,8 +113,8 @@ export default function BlogWordpressDraftConfirmRenderer({
             {v.excerpt}
           </p>
         )}
-        {v.wordpressInstanceId && (
-          <p className="text-muted-foreground">Site: {v.wordpressInstanceId}</p>
+        {v.site && (
+          <p className="text-muted-foreground">Site: {v.site}</p>
         )}
       </CardContent>
       <CardFooter className="flex justify-end gap-2">
