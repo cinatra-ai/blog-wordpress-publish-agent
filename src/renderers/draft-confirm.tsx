@@ -6,6 +6,12 @@ import type { FieldRendererProps } from "@cinatra-ai/sdk-ui/field-renderer-props
 
 import { Button, Card, CardContent, CardFooter, CardHeader, CardTitle } from "@cinatra-ai/design-primitives";
 
+import {
+  draftConfirmDecision,
+  screenExcerpt,
+  screenTitle,
+} from "./draft-confirm-decision";
+
 // HITL renderer for @cinatra-ai/blog-wordpress-publish-agent, binding
 // "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm" (kind
 // "wordpress-draft-confirm"). Relocated in-repo from the host
@@ -42,8 +48,8 @@ function toDraftConfirmValue(value: unknown): DraftConfirmValue {
       postArtifactId: str(v, "postArtifactId"),
       postRepresentationRevisionId: str(v, "postRepresentationRevisionId"),
       wordpressInstanceId: str(v, "wordpressInstanceId") || undefined,
-      title: str(v, "title") || undefined,
-      excerpt: str(v, "excerpt") || undefined,
+      title: screenTitle(v) || undefined,
+      excerpt: screenExcerpt(v) || undefined,
     };
   }
   return { postArtifactId: "", postRepresentationRevisionId: "" };
@@ -75,11 +81,13 @@ export default function BlogWordpressDraftConfirmRenderer({
 
   const decide = (approved: boolean) => () => {
     if (!hasReference) return;
-    onChangeRef.current({
-      approved,
-      postArtifactId: v.postArtifactId,
-      postRepresentationRevisionId: v.postRepresentationRevisionId,
-    });
+    onChangeRef.current(
+      draftConfirmDecision(
+        approved,
+        v.postArtifactId,
+        v.postRepresentationRevisionId,
+      ),
+    );
   };
 
   return (
