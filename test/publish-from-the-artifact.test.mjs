@@ -55,7 +55,12 @@ test("the flow takes an artifact reference, not a blog record", () => {
 test("the artifact reference is what the person is asked for", () => {
   const required = node("start").metadata.cinatra.required;
   expect(required).toEqual(
-    ["postArtifactId", "postRepresentationRevisionId", "wordpressInstanceId"],
+    [
+      "postArtifactId",
+      "postRepresentationRevisionId",
+      "wordpressInstanceId",
+      "wordpressSiteName",
+    ],
   );
 });
 
@@ -118,7 +123,12 @@ test("the address is written back onto the SAME artifact, through the host's wri
     write.data.input.objectId,
     "the write lands on the artifact that was read, never a new row",
   ).toBe("{{ postArtifactId }}");
-  expect(write.data.input.data).toBe("{{ addressPatch }}");
+  // The patch reaches the artifact: the leaf hands objects_update the patch as
+  // JSON text encoding an object, under the key `data`, and the hint keeps
+  // `addressPatch` visible to the runtime's placeholder inference.
+  expect(write.data.input.data).toBe(
+    "{# pyagentspec-input-hint: {{ addressPatch }} #}{{ addressPatch | tojson }}",
+  );
   expect(
     write.metadata.cinatra.riskClass,
     "a persisting node is never labelled read_only",

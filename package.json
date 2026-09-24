@@ -1,6 +1,6 @@
 {
   "name": "@cinatra-ai/blog-wordpress-publish-agent",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "license": "Apache-2.0",
   "description": "Publishes the blog post ARTIFACT revision a person continued with to a connected WordPress site and writes the site's address back onto that artifact. Takes an artifact reference (postArtifactId + postRepresentationRevisionId), confirms with the person before anything reaches the site, creates the page through the WordPress connector's own site catalogue, and merges the address onto the artifact's data. Returns a receipt, never a new artifact.",
   "type": "module",
@@ -107,7 +107,7 @@
     "sourceVersionId": "d7d9f3a9-a6fa-4f18-8879-375c833b3e3e",
     "sourceVersionNumber": 1,
     "riskLevel": "low",
-    "hasApprovalGates": false,
+    "hasApprovalGates": true,
     "toolAccess": [],
     "ownerOrgId": null,
     "produces": []
