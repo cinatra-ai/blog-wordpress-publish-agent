@@ -118,7 +118,12 @@ test("the address is written back onto the SAME artifact, through the host's wri
     write.data.input.objectId,
     "the write lands on the artifact that was read, never a new row",
   ).toBe("{{ postArtifactId }}");
-  expect(write.data.input.data).toBe("{{ addressPatch }}");
+  // The patch reaches the artifact: the leaf hands objects_update the patch as
+  // JSON text encoding an object, under the key `data`, and the hint keeps
+  // `addressPatch` visible to the runtime's placeholder inference.
+  expect(write.data.input.data).toBe(
+    "{# pyagentspec-input-hint: {{ addressPatch }} #}{{ addressPatch | tojson }}",
+  );
   expect(
     write.metadata.cinatra.riskClass,
     "a persisting node is never labelled read_only",
@@ -393,4 +398,20 @@ test("the patch's key space is declared closed, not only described", () => {
   expect(recipe, "an invented key would land on the artifact's own data").toMatch(
     /never a field of the artifact itself/,
   );
+});
+
+test("the write-back leaf hands the patch over as JSON text of exactly the three declared members", () => {
+  const write = passthroughNodes().get("objects_update");
+  // A template comment renders to nothing, so what the leaf renders is the rest.
+  const rest = write.data.input.data.replace(/\{#[\s\S]*?#\}/g, "");
+  expect(rest).toBe("{{ addressPatch | tojson }}");
+  const full =
+    '{"wordpressPublishedExternalId": "42", "wordpressPublishedRevisionId": "rev-1", "wordpressPublishedUrl": "https://blog.example.com/hello-world/"}';
+  const parsed = JSON.parse(rest.replace("{{ addressPatch | tojson }}", full));
+  expect(parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)).toBe(true);
+  expect(Object.keys(parsed).sort()).toEqual([...ADDRESS_KEYS].sort());
+  expect(Object.keys(parsed).sort()).toEqual(
+    [...write.metadata.cinatra.addressPatchKeys].sort(),
+  );
+  expect(JSON.parse(rest.replace("{{ addressPatch | tojson }}", "{}"))).toEqual({});
 });

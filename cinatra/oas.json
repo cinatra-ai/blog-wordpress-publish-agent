@@ -646,7 +646,7 @@
         "tool": "objects_update",
         "input": {
           "objectId": "{{ postArtifactId }}",
-          "data": "{{ addressPatch }}"
+          "data": "{# pyagentspec-input-hint: {{ addressPatch }} #}{{ addressPatch | tojson }}"
         },
         "agent_run_id": "{{ cinatra_run_id }}"
       },
@@ -680,7 +680,7 @@
           "riskClass": "write",
           "requiresApproval": false,
           "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
-          "description": "THE WRITE-BACK, and the only road it takes: objects_update merges the patch into the SAME artifact row's data (objects.data) — never a side channel, never a new artifact, never a blog record. The merge is shallow at the top level, which is why the address keys are flat and destination-prefixed: a second destination's write cannot clobber this one. An empty patch (nothing published) merges nothing.",
+          "description": "THE WRITE-BACK, and the only road it takes: objects_update merges the patch into the SAME artifact row's data (objects.data) — never a side channel, never a new artifact, never a blog record. The merge is shallow at the top level, which is why the address keys are flat and destination-prefixed: a second destination's write cannot clobber this one. An empty patch (nothing published) merges nothing. The patch travels under the key data as JSON TEXT encoding an object ({} when nothing was published), because the runtime renders every leaf of an ApiNode's data as a string; the application's objects_update seam parses that text into the object it merges, and an installation without that seam fails the write loudly rather than merging nothing.",
           "addressPatchKeys": [
             "wordpressPublishedUrl",
             "wordpressPublishedExternalId",
