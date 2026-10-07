@@ -1,0 +1,25 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import DraftConfirmRenderer from "../src/renderers/draft-confirm.tsx";
+
+const pinned = { postArtifactId: "artifact-1", postRepresentationRevisionId: "revision-1", wordpressInstanceId: "opaque-instance", title: "The post", excerpt: "A summary" };
+let container, root, answers, previousActEnvironment;
+beforeEach(() => { previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT; globalThis.IS_REACT_ACT_ENVIRONMENT = true; container = document.createElement("div"); document.body.append(container); root = createRoot(container); answers = []; });
+afterEach(async () => { await act(() => root.unmount()); container.remove(); globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment; });
+async function draw(value, extras = {}) { await act(() => root.render(createElement(DraftConfirmRenderer, { fieldName: "confirmation", schema: {}, value, onChange: v => answers.push(v), context: {}, bindingParams: {"renderInputs": {"siteHost": {"provider": "connector-destination-host", "connectorKind": "wordpress", "connectorPackage": "@cinatra-ai/wordpress-mcp-connector", "instanceField": "wordpressInstanceId", "identityFields": ["postArtifactId", "postRepresentationRevisionId"]}}}, ...extras }))); }
+async function click(label) { const button = [...container.querySelectorAll("button")].find(x => x.textContent === label); expect(button).toBeDefined(); await act(() => button.click()); }
+
+describe("the actual WordPress confirmation renderer", () => {
+  it("shows the trusted host, never the opaque connector identity", async () => { await draw({ ...pinned, siteHost: "blog.acme.example" }); expect(container.textContent).toContain("Site: blog.acme.example"); expect(container.textContent).not.toContain("opaque-instance"); });
+  it("preserves a local host and nondefault port", async () => { await draw({ ...pinned, siteHost: "127.0.0.1:3188" }); expect(container.textContent).toContain("Site: 127.0.0.1:3188"); });
+  it("keeps a legacy ID-only gate actionable with no site line", async () => { await draw(pinned); expect(container.textContent).not.toContain("Site:"); await click("Publish to WordPress"); expect(answers).toEqual([{ approved: true, postArtifactId: "artifact-1", postRepresentationRevisionId: "revision-1" }]); });
+  it("ignores hostile siteHost on an undeclared legacy binding", async () => { await draw({ ...pinned, siteHost: "forged.example" }, { bindingParams: undefined }); expect(container.textContent).not.toContain("Site:"); await click("Do not publish"); expect(answers[0]).toEqual({ approved: false, postArtifactId: "artifact-1", postRepresentationRevisionId: "revision-1" }); });
+  it("approves exactly the pinned artifact revision", async () => { await draw({ ...pinned, siteHost: "blog.acme.example" }); await click("Publish to WordPress"); expect(answers).toEqual([{ approved: true, postArtifactId: "artifact-1", postRepresentationRevisionId: "revision-1" }]); });
+  it("declines exactly the pinned artifact revision", async () => { await draw({ ...pinned, siteHost: "blog.acme.example" }); await click("Do not publish"); expect(answers).toEqual([{ approved: false, postArtifactId: "artifact-1", postRepresentationRevisionId: "revision-1" }]); });
+  it.each([{ postArtifactId: "" }, { postRepresentationRevisionId: "" }, { postArtifactId: "   " }, { postRepresentationRevisionId: "   " }])("cannot answer an incomplete reference %j", async missing => { await draw({ ...pinned, ...missing }); await click("Publish to WordPress"); await click("Do not publish"); expect(answers).toEqual([]); });
+  it("preserves the disabled control", async () => { await draw(pinned, { disabled: true }); await click("Publish to WordPress"); await click("Do not publish"); expect(answers).toEqual([]); });
+  it("uses the latest callback and reference after rerender, without keeping the old host", async () => { await draw({ ...pinned, siteHost: "blog.acme.example" }); const next = []; await draw({ ...pinned, postArtifactId: "artifact-2", postRepresentationRevisionId: "revision-2" }, { onChange: v => next.push(v) }); expect(container.textContent).not.toContain("blog.acme.example"); await click("Publish to WordPress"); expect(answers).toEqual([]); expect(next).toEqual([{ approved: true, postArtifactId: "artifact-2", postRepresentationRevisionId: "revision-2" }]); });
+  it("renders title and excerpt as ordinary text", async () => { await draw({ ...pinned, title: "<img src=x>", excerpt: "<script>bad()</script>" }); expect(container.querySelector("img,script")).toBeNull(); expect(container.textContent).toContain("<img src=x>"); expect(container.textContent).toContain("<script>bad()</script>"); });
+});
