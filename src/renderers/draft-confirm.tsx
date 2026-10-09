@@ -87,7 +87,14 @@ export default function BlogWordpressDraftConfirmRenderer({
   };
 
   return (
-    <Card className="border-line bg-surface backdrop-blur-none">
+    <Card
+      className="border-line bg-surface backdrop-blur-none"
+      data-conformance-id={
+        hostDeclared && v.siteHost
+          ? "run-wordpress-publish-step"
+          : "run-wordpress-publish-step-no-site"
+      }
+    >
       <CardHeader>
         <CardTitle>Publish this post to WordPress?</CardTitle>
       </CardHeader>
