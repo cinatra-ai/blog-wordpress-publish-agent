@@ -29,7 +29,9 @@
   },
   "devDependencies": {
     "react": "^19.0.0",
-    "vitest": "^4.0.0"
+    "vitest": "^4.0.0",
+    "react-dom": "^19.2.7",
+    "jsdom": "^30.0.0"
   },
   "cinatra": {
     "apiVersion": "cinatra.ai/v1",
@@ -88,6 +90,20 @@
         "component": {
           "entry": "./src/renderers/draft-confirm.tsx",
           "propsApiVersion": 1
+        },
+        "params": {
+          "renderInputs": {
+            "siteHost": {
+              "provider": "connector-destination-host",
+              "connectorKind": "wordpress",
+              "connectorPackage": "@cinatra-ai/wordpress-mcp-connector",
+              "instanceField": "wordpressInstanceId",
+              "identityFields": [
+                "postArtifactId",
+                "postRepresentationRevisionId"
+              ]
+            }
+          }
         }
       }
     ],

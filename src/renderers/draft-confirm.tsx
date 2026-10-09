@@ -26,7 +26,7 @@ import { Button, Card, CardContent, CardFooter, CardHeader, CardTitle } from "@c
 type DraftConfirmValue = {
   postArtifactId: string;
   postRepresentationRevisionId: string;
-  wordpressInstanceId?: string;
+  siteHost?: string;
   title?: string;
   excerpt?: string;
 };
@@ -41,7 +41,7 @@ function toDraftConfirmValue(value: unknown): DraftConfirmValue {
     return {
       postArtifactId: str(v, "postArtifactId"),
       postRepresentationRevisionId: str(v, "postRepresentationRevisionId"),
-      wordpressInstanceId: str(v, "wordpressInstanceId") || undefined,
+      siteHost: str(v, "siteHost") || undefined,
       title: str(v, "title") || undefined,
       excerpt: str(v, "excerpt") || undefined,
     };
@@ -53,7 +53,11 @@ export default function BlogWordpressDraftConfirmRenderer({
   value,
   onChange,
   disabled,
+  bindingParams,
 }: FieldRendererProps) {
+  // Undeclared legacy bindings have no host projection. Never treat an agent
+  // supplied siteHost as trusted display data on that path.
+  const hostDeclared = (bindingParams?.renderInputs as { siteHost?: { provider?: unknown } } | undefined)?.siteHost?.provider === "connector-destination-host";
   const v = useMemo(() => toDraftConfirmValue(value), [value]);
 
   const onChangeRef = useRef(onChange);
@@ -83,7 +87,14 @@ export default function BlogWordpressDraftConfirmRenderer({
   };
 
   return (
-    <Card className="border-line bg-surface backdrop-blur-none">
+    <Card
+      className="border-line bg-surface backdrop-blur-none"
+      data-conformance-id={
+        hostDeclared && v.siteHost
+          ? "run-wordpress-publish-step"
+          : "run-wordpress-publish-step-no-site"
+      }
+    >
       <CardHeader>
         <CardTitle>Publish this post to WordPress?</CardTitle>
       </CardHeader>
@@ -104,8 +115,8 @@ export default function BlogWordpressDraftConfirmRenderer({
             {v.excerpt}
           </p>
         )}
-        {v.wordpressInstanceId && (
-          <p className="text-muted-foreground">Site: {v.wordpressInstanceId}</p>
+        {hostDeclared && v.siteHost && (
+          <p className="text-muted-foreground">Site: {v.siteHost}</p>
         )}
       </CardContent>
       <CardFooter className="flex justify-end gap-2">
