@@ -26,7 +26,7 @@ import { Button, Card, CardContent, CardFooter, CardHeader, CardTitle } from "@c
 type DraftConfirmValue = {
   postArtifactId: string;
   postRepresentationRevisionId: string;
-  wordpressInstanceId?: string;
+  instanceId?: string;
   title?: string;
   excerpt?: string;
 };
@@ -41,7 +41,7 @@ function toDraftConfirmValue(value: unknown): DraftConfirmValue {
     return {
       postArtifactId: str(v, "postArtifactId"),
       postRepresentationRevisionId: str(v, "postRepresentationRevisionId"),
-      wordpressInstanceId: str(v, "wordpressInstanceId") || undefined,
+      instanceId: str(v, "instanceId") || undefined,
       title: str(v, "title") || undefined,
       excerpt: str(v, "excerpt") || undefined,
     };
@@ -104,8 +104,8 @@ export default function BlogWordpressDraftConfirmRenderer({
             {v.excerpt}
           </p>
         )}
-        {v.wordpressInstanceId && (
-          <p className="text-muted-foreground">Site: {v.wordpressInstanceId}</p>
+        {v.instanceId && (
+          <p className="text-muted-foreground">Site: {v.instanceId}</p>
         )}
       </CardContent>
       <CardFooter className="flex justify-end gap-2">
