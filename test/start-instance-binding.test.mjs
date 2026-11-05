@@ -71,6 +71,16 @@ const REFERENCE = {
   postArtifactId: "artifact-1",
   postRepresentationRevisionId: "revision-1",
 };
+const REFERENCE_2 = {
+  postArtifactId: "artifact-2",
+  postRepresentationRevisionId: "revision-2",
+};
+// Two posts, each with its own connected site: a card or a button that holds
+// one post's values in its code answers wrongly for the other.
+const POSTS = [
+  [REFERENCE, "wp-1"],
+  [REFERENCE_2, "wp-2"],
+];
 
 const isElement = (n) =>
   n !== null && typeof n === "object" && typeof n.$$typeof === "symbol";
@@ -91,6 +101,13 @@ const elementsOf = (n, out = []) => {
   return out;
 };
 
+// The text a node holds itself, whatever kind of element it is.
+const ownTextOf = (el) =>
+  childrenOf(el)
+    .filter((c) => typeof c === "string" || typeof c === "number")
+    .map(String)
+    .join("");
+
 /** Draw the card for one confirmation value. */
 function draw(value) {
   const answers = [];
@@ -102,10 +119,12 @@ function draw(value) {
     context: {},
   });
   const elements = elementsOf(tree);
-  const siteLines = elements
-    .filter((el) => el.type === "p")
-    .map(textOf)
-    .filter((line) => line.startsWith("Site:"));
+  // Every element that holds a "Site:" text of its own counts, not only a
+  // paragraph, and the whole tree's text is counted too, so a "Site:" label
+  // split over two elements or drawn by another kind of element shows up.
+  const siteLines = elements.map(ownTextOf).filter((line) => line.includes("Site:"));
+  const text = textOf(tree);
+  const siteMentions = text.split("Site:").length - 1;
   const click = (label) => {
     const buttons = elements.filter(
       (el) => typeof el.props.onClick === "function" && textOf(el) === label,
@@ -114,7 +133,7 @@ function draw(value) {
     expect(buttons[0].props.disabled, `"${label}" is enabled`).toBe(false);
     buttons[0].props.onClick();
   };
-  return { siteLines, click, answers };
+  return { siteLines, siteMentions, text, click, answers };
 }
 
 /** A template with its `{# ... #}` comments removed: what the model reads. */
@@ -199,32 +218,54 @@ test("the confirmation value names the site under the same name", () => {
 });
 
 test("the confirmation card draws the site from instanceId", () => {
-  const { siteLines } = draw({ ...REFERENCE, instanceId: "wp-1" });
+  for (const [reference, site] of POSTS) {
+    const { siteLines, siteMentions } = draw({ ...reference, instanceId: site });
+    expect(
+      siteLines,
+      "the Site line drawn for a value with instanceId",
+    ).toEqual([`Site: ${site}`]);
+    expect(
+      siteMentions,
+      "the number of Site labels drawn for a value with instanceId",
+    ).toBe(1);
+  }
+  // A value that carries both keys: the site is the one under instanceId.
+  const both = draw({ ...REFERENCE, instanceId: "wp-new", [OLD]: "wp-old" });
   expect(
-    siteLines,
-    "the Site line drawn for a value with instanceId",
-  ).toEqual(["Site: wp-1"]);
+    both.siteLines,
+    "the Site line drawn for a value with both keys",
+  ).toEqual(["Site: wp-new"]);
+  expect(
+    both.text.includes("wp-old"),
+    "the old key's value drawn for a value with both keys",
+  ).toBe(false);
 });
 
 test("a confirmation that carries only the old key draws no Site line", () => {
   // A confirmation parked before the rename carries the site under the old
   // key only. The card no longer reads that key.
-  const { siteLines } = draw({ ...REFERENCE, [OLD]: "wp-1" });
+  const { siteLines, siteMentions } = draw({ ...REFERENCE, [OLD]: "wp-1" });
   expect(
     siteLines,
     "the Site line drawn for a value with only the old key",
   ).toEqual([]);
+  expect(
+    siteMentions,
+    "the number of Site labels drawn for a value with only the old key",
+  ).toBe(0);
 });
 
 test("both buttons answer with the post and its revision only, under either key", () => {
-  for (const site of [{ instanceId: "wp-1" }, { [OLD]: "wp-1" }]) {
-    const { click, answers } = draw({ ...REFERENCE, ...site });
-    click("Publish to WordPress");
-    click("Do not publish");
-    expect(answers).toEqual([
-      { approved: true, ...REFERENCE },
-      { approved: false, ...REFERENCE },
-    ]);
+  for (const [reference, site] of POSTS) {
+    for (const key of ["instanceId", OLD]) {
+      const { click, answers } = draw({ ...reference, [key]: site });
+      click("Publish to WordPress");
+      click("Do not publish");
+      expect(answers, "the answers of both buttons").toEqual([
+        { approved: true, ...reference },
+        { approved: false, ...reference },
+      ]);
+    }
   }
 });
 
