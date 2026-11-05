@@ -136,6 +136,10 @@ function draw(value) {
   return { siteLines, siteMentions, text, click, answers };
 }
 
+/** The type each declaration named instanceId in a list of inputs carries. */
+const instanceIdTypes = (list) =>
+  (list ?? []).filter((e) => e.title === "instanceId").map((e) => e.type);
+
 /** A template with its `{# ... #}` comments removed: what the model reads. */
 const withoutComments = (template) => template.replace(/\{#[\s\S]*?#\}/g, "");
 
@@ -148,6 +152,14 @@ test("the connected site is the start input instanceId, the one name the host bi
   ]);
   expect(titles(start.inputs)).toContain("instanceId");
   expect(titles(oas.inputs)).toContain("instanceId");
+  expect(
+    instanceIdTypes(start.inputs),
+    "the start step's declaration of instanceId",
+  ).toEqual(["string"]);
+  expect(
+    instanceIdTypes(oas.inputs),
+    "the flow's declaration of instanceId",
+  ).toEqual(["string"]);
 });
 
 test("the start input reaches the orchestration step on one edge under the same name", () => {
@@ -165,6 +177,10 @@ test("the start input reaches the orchestration step on one edge under the same 
   const publish = bridgeNode();
   expect(publish.id).toBe("publish");
   expect(titles(publish.inputs)).toContain("instanceId");
+  expect(
+    instanceIdTypes(publish.inputs),
+    "the orchestration step's declaration of instanceId",
+  ).toEqual(["string"]);
 });
 
 test("the orchestration step's prompt hands the model the input outside a template comment", () => {
@@ -235,6 +251,10 @@ test("the confirmation card draws the site from instanceId", () => {
     both.siteLines,
     "the Site line drawn for a value with both keys",
   ).toEqual(["Site: wp-new"]);
+  expect(
+    both.siteMentions,
+    "the number of Site labels drawn for a value with both keys",
+  ).toBe(1);
   expect(
     both.text.includes("wp-old"),
     "the old key's value drawn for a value with both keys",
