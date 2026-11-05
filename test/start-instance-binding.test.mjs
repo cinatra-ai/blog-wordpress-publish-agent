@@ -15,10 +15,13 @@
 // and the old name `wordpressInstanceId` is gone from everything this package
 // ships.
 //
-// Every test below except the button test fails against a flow and a card that
-// still use the old name, on the assertion its title names. The button test
-// holds under either name: it guards that the rename leaves the answer the card
-// sends unchanged.
+// Every test below fails against a flow and a card that still use the old
+// name. Every card the suite draws is checked the same way (draw() below): its
+// site, the old key's value, the rest of the card and the answers of its two
+// buttons. So the button test also fails there, on the Site line of its first
+// card. The answers the buttons send do not read the site key, and the button
+// test checks them under either key: it guards that the rename leaves them
+// unchanged.
 
 import { expect, test, vi } from "vitest";
 
@@ -34,9 +37,13 @@ import {
 
 // The confirmation card is drawn by calling it, with no DOM. Its three hooks
 // are made plain calls (a memo computes, a ref holds its first value, an effect
-// runs at once), and the host's shared primitives are stand-ins: the card's
-// own JSX tree comes back, and its paragraphs and its buttons' click handlers
-// are read from that tree.
+// runs at once), and the host's shared primitives are stand-ins that draw
+// their children. Every element of the tree that comes back is then drawn in
+// turn: a component element (a function, a class, a memo or forwardRef
+// wrapper, a context provider or consumer, one of the stand-ins) is called and
+// what it returns is drawn in its place. An element or a node of a kind this
+// test cannot draw, raw HTML among them, fails the test, and so does a
+// component that calls a hook other than those three.
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -81,59 +88,180 @@ const POSTS = [
   [REFERENCE, "wp-1"],
   [REFERENCE_2, "wp-2"],
 ];
+// The rest of a confirmation value as the flow emits it (and as a run parked
+// under 0.4.x holds it): the card draws a title line and the excerpt for it.
+const ABOUT = { title: "A first post", excerpt: "Its opening lines." };
 
+const ELEMENT = new Set([
+  Symbol.for("react.transitional.element"),
+  Symbol.for("react.element"),
+]);
 const isElement = (n) =>
-  n !== null && typeof n === "object" && typeof n.$$typeof === "symbol";
-const childrenOf = (el) => {
-  const c = el.props?.children;
-  if (c === undefined) return [];
-  return Array.isArray(c) ? c.flat(Infinity) : [c];
-};
-const textOf = (n) => {
-  if (typeof n === "string" || typeof n === "number") return String(n);
-  return isElement(n) ? childrenOf(n).map(textOf).join("") : "";
-};
-const elementsOf = (n, out = []) => {
-  if (isElement(n)) {
-    out.push(n);
-    for (const c of childrenOf(n)) elementsOf(c, out);
+  n !== null && typeof n === "object" && ELEMENT.has(n.$$typeof);
+
+/** What an element draws in its place: its children, or what its component returns. */
+function contentOf(type, props) {
+  if (typeof type === "string" || typeof type === "symbol") {
+    // A DOM element, or an element whose type is a symbol (a Fragment,
+    // StrictMode, Suspense or Profiler).
+    return props.children;
   }
-  return out;
-};
+  if (typeof type === "function") {
+    if (type.prototype?.isReactComponent) {
+      const instance = new type(props);
+      instance.props = props;
+      return instance.render();
+    }
+    return type(props);
+  }
+  switch (type?.$$typeof) {
+    case Symbol.for("react.memo"):
+      return contentOf(type.type, props);
+    case Symbol.for("react.forward_ref"):
+      return type.render(props, null);
+    case Symbol.for("react.context"):
+    case Symbol.for("react.provider"):
+      return props.children;
+    case Symbol.for("react.consumer"):
+      return props.children(type._context._currentValue);
+    default:
+      throw new Error(
+        `the card draws an element this test cannot draw: ${String(type?.$$typeof ?? type)}`,
+      );
+  }
+}
 
-// The text a node holds itself, whatever kind of element it is.
-const ownTextOf = (el) =>
-  childrenOf(el)
-    .filter((c) => typeof c === "string" || typeof c === "number")
-    .map(String)
-    .join("");
+// A "Site:" label in any width or case of its letters, with any white space
+// before its colon and any format character (a zero-width space, for one)
+// inside it. A word that ends in "site" before a colon counts too.
+const plain = (s) => s.normalize("NFKC").replace(/\p{Cf}/gu, "").toLowerCase();
+const labelsIn = (s) => (plain(s).match(/site\s*:/g) ?? []).length;
 
-/** Draw the card for one confirmation value. */
-function draw(value) {
+/**
+ * Draw the card for one value, with no checks. Each element becomes a record:
+ * the text it draws itself and the value of each of its props that is a
+ * string or a number (an element passed as a prop is drawn into the record).
+ * The text of the whole tree is kept too, in order, so a label split over
+ * several elements shows up there.
+ */
+function render(value) {
   const answers = [];
-  const tree = DraftConfirmRenderer({
-    fieldName: "confirmation",
-    schema: {},
-    value,
-    onChange: (answer) => answers.push(answer),
-    context: {},
-  });
-  const elements = elementsOf(tree);
-  // Every element that holds a "Site:" text of its own counts, not only a
-  // paragraph, and the whole tree's text is counted too, so a "Site:" label
-  // split over two elements or drawn by another kind of element shows up.
-  const siteLines = elements.map(ownTextOf).filter((line) => line.includes("Site:"));
-  const text = textOf(tree);
-  const siteMentions = text.split("Site:").length - 1;
+  const records = [];
+  const texts = [];
+  const visit = (node, owner) => {
+    if (node === null || node === undefined || typeof node === "boolean") return;
+    if (typeof node === "function") return; // React draws nothing for a function
+    if (["string", "number", "bigint"].includes(typeof node)) {
+      texts.push(String(node));
+      owner.own.push(String(node));
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const c of node) visit(c, owner);
+      return;
+    }
+    if (isElement(node)) {
+      const { children, dangerouslySetInnerHTML, ...rest } = node.props ?? {};
+      if (dangerouslySetInnerHTML !== undefined) {
+        throw new Error("the card draws raw HTML, which this test cannot read");
+      }
+      const record = { element: node, own: [], props: [] };
+      records.push(record);
+      for (const key of Object.keys(rest).sort()) {
+        const p = rest[key];
+        if (["string", "number", "bigint"].includes(typeof p)) record.props.push(String(p));
+        else if (isElement(p) || Array.isArray(p)) visit(p, record); // drawn by a prop
+      }
+      visit(contentOf(node.type, node.props ?? {}), record);
+      return;
+    }
+    if (typeof node === "object" && node.$$typeof === Symbol.for("react.portal")) {
+      visit(node.children, owner);
+      return;
+    }
+    if (typeof node === "object" && typeof node[Symbol.iterator] === "function") {
+      for (const c of node) visit(c, owner);
+      return;
+    }
+    throw new Error(`the card draws a node this test cannot draw: ${typeof node}`);
+  };
+  visit(
+    DraftConfirmRenderer({
+      fieldName: "confirmation",
+      schema: {},
+      value,
+      onChange: (answer) => answers.push(answer),
+      context: {},
+    }),
+    { own: [] },
+  );
+  const lines = records.map((r) => [r.own.join(""), ...r.props]);
+  const strings = [texts.join(""), ...records.flatMap((r) => r.props)];
+  return { records, lines, strings, answers };
+}
+
+/** The shape of a value's site keys, as the failure labels name it. */
+const shapeOf = (value) =>
+  "instanceId" in value && OLD in value
+    ? "both keys"
+    : "instanceId" in value
+      ? "instanceId"
+      : OLD in value
+        ? "only the old key"
+        : "no site key";
+
+/**
+ * Draw the card for one confirmation value and check it. `site` is the one
+ * site the card must name, or null for none. Every value the suite draws goes
+ * through here, so no card is drawn without these checks: the Site label (in
+ * the own text of any element, in any string prop, split over elements or not)
+ * appears once, as the line "Site: <site>", or not at all; the old key's value
+ * is not drawn; the own texts and string props of the rest of the card are
+ * those that the same value draws without its two site keys; and "Publish to
+ * WordPress" and "Do not publish" are enabled and answer with `approved` and
+ * the value's post and revision only.
+ */
+function draw(value, site) {
+  const shape = shapeOf(value);
+  // The same value without its two site keys.
+  const { [OLD]: old, instanceId: _ignored, ...bare } = value;
+  const drawn = render(value);
+  const without = render(bare);
+  const line = site === null ? null : `Site: ${site}`;
+  expect(
+    drawn.lines.flat().filter((s) => labelsIn(s) > 0),
+    `the Site line drawn for a value with ${shape}`,
+  ).toEqual(line === null ? [] : [line]);
+  expect(
+    drawn.strings.reduce((n, s) => n + labelsIn(s), 0),
+    `the number of Site labels drawn for a value with ${shape}`,
+  ).toBe(line === null ? 0 : 1);
+  if (typeof old === "string" && old !== site) {
+    expect(
+      drawn.strings.some((s) => plain(s).includes(plain(old))),
+      `the old key's value drawn for a value with ${shape}`,
+    ).toBe(false);
+  }
+  expect(
+    drawn.lines.filter((l) => l[0] !== line),
+    `the rest of the card drawn for a value with ${shape}, against the same value without its site`,
+  ).toEqual(without.lines);
   const click = (label) => {
-    const buttons = elements.filter(
-      (el) => typeof el.props.onClick === "function" && textOf(el) === label,
-    );
-    expect(buttons.length, `one button reads "${label}"`).toBe(1);
-    expect(buttons[0].props.disabled, `"${label}" is enabled`).toBe(false);
+    const buttons = drawn.records
+      .filter((r) => typeof r.element.props.onClick === "function")
+      .filter((r) => r.own.join("") === label)
+      .map((r) => r.element);
+    expect(buttons.length, `one button reads "${label}" for a value with ${shape}`).toBe(1);
+    expect(buttons[0].props.disabled, `"${label}" is enabled for a value with ${shape}`).toBe(false);
     buttons[0].props.onClick();
   };
-  return { siteLines, siteMentions, text, click, answers };
+  click("Publish to WordPress");
+  click("Do not publish");
+  const { postArtifactId, postRepresentationRevisionId } = value;
+  expect(drawn.answers, `the answers of both buttons for a value with ${shape}`).toEqual([
+    { approved: true, postArtifactId, postRepresentationRevisionId },
+    { approved: false, postArtifactId, postRepresentationRevisionId },
+  ]);
 }
 
 /** The type each declaration named instanceId in a list of inputs carries. */
@@ -235,56 +363,31 @@ test("the confirmation value names the site under the same name", () => {
 
 test("the confirmation card draws the site from instanceId", () => {
   for (const [reference, site] of POSTS) {
-    const { siteLines, siteMentions } = draw({ ...reference, instanceId: site });
-    expect(
-      siteLines,
-      "the Site line drawn for a value with instanceId",
-    ).toEqual([`Site: ${site}`]);
-    expect(
-      siteMentions,
-      "the number of Site labels drawn for a value with instanceId",
-    ).toBe(1);
+    for (const about of [{}, ABOUT]) {
+      draw({ ...reference, ...about, instanceId: site }, site);
+      // A value that carries both keys: the site is the one under instanceId.
+      draw({ ...reference, ...about, instanceId: site, [OLD]: `old-${site}` }, site);
+    }
   }
-  // A value that carries both keys: the site is the one under instanceId.
-  const both = draw({ ...REFERENCE, instanceId: "wp-new", [OLD]: "wp-old" });
-  expect(
-    both.siteLines,
-    "the Site line drawn for a value with both keys",
-  ).toEqual(["Site: wp-new"]);
-  expect(
-    both.siteMentions,
-    "the number of Site labels drawn for a value with both keys",
-  ).toBe(1);
-  expect(
-    both.text.includes("wp-old"),
-    "the old key's value drawn for a value with both keys",
-  ).toBe(false);
 });
 
 test("a confirmation that carries only the old key draws no Site line", () => {
   // A confirmation parked before the rename carries the site under the old
-  // key only. The card no longer reads that key.
-  const { siteLines, siteMentions } = draw({ ...REFERENCE, [OLD]: "wp-1" });
-  expect(
-    siteLines,
-    "the Site line drawn for a value with only the old key",
-  ).toEqual([]);
-  expect(
-    siteMentions,
-    "the number of Site labels drawn for a value with only the old key",
-  ).toBe(0);
+  // key only, beside the post, its revision, the title and the excerpt. The
+  // card no longer reads that key.
+  for (const [reference, site] of POSTS) {
+    for (const about of [{}, ABOUT]) {
+      draw({ ...reference, ...about, [OLD]: site }, null);
+    }
+  }
 });
 
 test("both buttons answer with the post and its revision only, under either key", () => {
+  // draw() presses both buttons of every card it draws; here each post is
+  // drawn under each key alone.
   for (const [reference, site] of POSTS) {
     for (const key of ["instanceId", OLD]) {
-      const { click, answers } = draw({ ...reference, [key]: site });
-      click("Publish to WordPress");
-      click("Do not publish");
-      expect(answers, "the answers of both buttons").toEqual([
-        { approved: true, ...reference },
-        { approved: false, ...reference },
-      ]);
+      draw({ ...reference, [key]: site }, key === "instanceId" ? site : null);
     }
   }
 });
