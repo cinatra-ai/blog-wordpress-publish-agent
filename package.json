@@ -28,7 +28,9 @@
     }
   },
   "devDependencies": {
+    "jsdom": "^30.0.0",
     "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "vitest": "^4.0.0"
   },
   "cinatra": {
