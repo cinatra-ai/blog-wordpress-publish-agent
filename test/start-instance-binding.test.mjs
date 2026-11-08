@@ -37,7 +37,11 @@
 // host's real primitives (they are mocked below); and anything that depends on
 // a real browser (layout, CSS, shadow trees, the page outside the card).
 // Those belong to a check on the real surface (a picture round), not to this
-// suite.
+// suite. Fact 1 counts elements, not text nodes: a second "Site:" label that
+// is bare text directly in an element around the Site line's element is not
+// counted, and the counted text is trimmed, so white space around the line is
+// not read. The sites, titles and excerpts the tests draw are plain: one with
+// a character that HTML escapes, a non-ASCII letter or a slash is not driven.
 
 import { expect, test, vi } from "vitest";
 
