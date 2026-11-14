@@ -2,7 +2,7 @@
 // (cinatra-ai/cinatra#4220, cinatra-ai/cinatra#4313).
 //
 // The orchestration reaches the site only through the WordPress connector's
-// governed site calls (`wordpress_site_tools_list`, `wordpress_site_tool_call`).
+// governed site calls (`wordpress_site_tools_list`, `wordpress_site_tool_write`).
 // The application refuses such a call from an agent run unless the run carries
 // a connector-instance pin. The binding of cinatra-ai/cinatra#4220 (pull
 // request cinatra-ai/cinatra#4258) derives that pin at dispatch from ONE start
@@ -263,7 +263,7 @@ test("both site calls pass the input instanceId", () => {
   ].map((m) => m[1]);
   const call = [
     ...system.matchAll(
-      /wordpress_site_tool_call\(\{\n {2}instanceId: (<[^>]*>),\n {2}toolName:/g,
+      /wordpress_site_tool_write\(\{\n {2}instanceId: (<[^>]*>),\n {2}toolName:/g,
     ),
   ].map((m) => m[1]);
   expect({ list, call }, "the instanceId argument of both site calls").toEqual({

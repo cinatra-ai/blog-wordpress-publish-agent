@@ -244,7 +244,7 @@ test("the person confirms BEFORE anything reaches the site", () => {
 });
 
 test("the site write goes through the declared connector", () => {
-  for (const primitive of ["wordpress_site_tools_list", "wordpress_site_tool_call"]) {
+  for (const primitive of ["wordpress_site_tools_list", "wordpress_site_tool_write"]) {
     expect(
       consumedPrimitives().includes(primitive),
       `${primitive} is declared`,
