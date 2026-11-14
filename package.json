@@ -73,6 +73,14 @@
         "requirement": "required"
       }
     ],
+    "fieldRenderers": [
+      {
+        "id": "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm",
+        "kind": "wordpress-draft-confirm",
+        "priority": 90,
+        "midRunHitl": true
+      }
+    ],
     "packageType": "agent",
     "manifestVersion": 1,
     "sourceTemplateId": "blog-wordpress-publish-agent-flow",

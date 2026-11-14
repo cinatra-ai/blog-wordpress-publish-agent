@@ -6,8 +6,10 @@
 // that it owns. The card shows the rows the pack declares for that step,
 // `metadata.cinatra.publishRows: [{ label, input }]`, as label over value.
 // So this pack declares its publishing step and the card's rows, and keeps no
-// confirmation of its own: no screen, no root `hitlScreens`, no pause in the
-// step's prompt.
+// confirmation of its own: no screen component, no root `hitlScreens`, no pause
+// in the step's prompt. It keeps declaring the former screen's id, without a
+// component, only for a run that paused there before this version (the last
+// case below).
 //
 // Two readers decide whether the declaration counts, and the cases below read
 // the flow the way they do:
@@ -159,7 +161,10 @@ test("the pack keeps no confirmation of its own in front of the publishing step"
     Object.values(components).map((c) => c?.component_type),
     "no step of the flow waits for a person",
   ).not.toContain("InputMessageNode");
-  expect(manifest.cinatra.fieldRenderers ?? [], "the package declares no screen").toEqual([]);
+  expect(
+    (manifest.cinatra.fieldRenderers ?? []).filter((r) => Object.hasOwn(r, "component")),
+    "the package ships no screen component",
+  ).toEqual([]);
   expect(existsSync(new URL("../src/renderers/draft-confirm.tsx", import.meta.url))).toBe(false);
 });
 
@@ -222,4 +227,21 @@ test("the published branch keeps the approval the card gave", () => {
     approvedIn(section),
     "the published branch returns approved: true after the card approved",
   ).toEqual(["true"]);
+});
+
+// A run that paused at the former confirmation screen before this version keeps
+// that screen's id in its stored question. The package keeps declaring the id,
+// with no component, so the application still reads that question as a step in
+// the middle of the run and draws its own schema form with Continue for it. The
+// flow never asks with the id: nothing in it names the screen.
+test("the former screen id stays declared, without a component, for a run paused before this version", () => {
+  expect(manifest.cinatra.fieldRenderers).toEqual([
+    {
+      id: "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm",
+      kind: "wordpress-draft-confirm",
+      priority: 90,
+      midRunHitl: true,
+    },
+  ]);
+  expect(JSON.stringify(oas), "the flow never names the former screen").not.toContain(":draft-confirm");
 });
