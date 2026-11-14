@@ -77,7 +77,7 @@
         "requirement": "required"
       },
       {
-        "primitive": "wordpress_site_tool_call",
+        "primitive": "wordpress_site_tool_write",
         "requirement": "required"
       }
     ],
