@@ -67,7 +67,7 @@ const END = "end";
 const CHAIN = [START, READ_RECORD, READ_TEXT, PUBLISH, WRITE_BACK, END];
 
 // The tools of the WordPress connector the publish step names, and no other step.
-const SITE_TOOLS = ["wordpress_site_tool_call", "wordpress_site_tools_list"];
+const SITE_TOOLS = ["wordpress_site_tool_write", "wordpress_site_tools_list"];
 
 // The tools the platform holds for the person's recorded decision on a run, by name.
 const OUTWARD = [

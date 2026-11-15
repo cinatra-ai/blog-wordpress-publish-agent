@@ -232,7 +232,7 @@ test("the end node hands the pipeline the address it published", () => {
 });
 
 test("the site write goes through the declared connector", () => {
-  for (const primitive of ["wordpress_site_tools_list", "wordpress_site_tool_call"]) {
+  for (const primitive of ["wordpress_site_tools_list", "wordpress_site_tool_write"]) {
     expect(
       consumedPrimitives().includes(primitive),
       `${primitive} is declared`,
