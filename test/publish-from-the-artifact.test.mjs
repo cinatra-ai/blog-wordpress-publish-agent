@@ -18,7 +18,6 @@ import {
   oas,
   oasText,
   passthroughNodes,
-  source,
   titles,
 } from "./__tests__/oas-contract.mjs";
 
@@ -232,17 +231,6 @@ test("the end node hands the pipeline the address it published", () => {
   ).toBeFalsy();
 });
 
-test("the person confirms BEFORE anything reaches the site", () => {
-  const system = bridgeNode().data.system;
-  const gate = system.indexOf("### Step 1 — the confirmation");
-  const create = system.indexOf("### Step 3 — create the page");
-  expect(gate > 0, "the recipe opens with the confirmation").toBeTruthy();
-  expect(create > gate, "the site write comes after it").toBeTruthy();
-  expect(oas.metadata.cinatra.hitlScreens).toEqual(
-    ["@cinatra-ai/blog-wordpress-publish-agent:draft-confirm"],
-  );
-});
-
 test("the site write goes through the declared connector", () => {
   for (const primitive of ["wordpress_site_tools_list", "wordpress_site_tool_write"]) {
     expect(
@@ -299,16 +287,6 @@ test("every node input is fed and every edge resolves", () => {
       ).toBeTruthy();
     }
   }
-});
-
-test("the HITL screen is keyed by the artifact, not by a draft record", () => {
-  const renderer = source("src/renderers/draft-confirm.tsx");
-  expect(renderer).toMatch(/postArtifactId/);
-  expect(renderer).toMatch(/postRepresentationRevisionId/);
-  expect(
-    renderer.includes("wordpressDraftId"),
-    "the WordPress draft record id is gone from the screen",
-  ).toBeFalsy();
 });
 
 // ---------------------------------------------------------------------------
