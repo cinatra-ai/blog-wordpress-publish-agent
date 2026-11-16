@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   agent-publish-gate:
-    uses: cinatra-ai/ci/.github/workflows/agent-publish-gate.yml@65a8024d980d4f3ac17492e7ceb91c6e2893e1c8 # v0.1.4-next.65a8024
+    uses: cinatra-ai/ci/.github/workflows/agent-publish-gate.yml@05938c0ca644e04233af3620a65dbb850d3b0d79 # v0.1.4-next.05938c0
     with:
       package: "."
-      ref: 65a8024d980d4f3ac17492e7ceb91c6e2893e1c8
+      ref: 05938c0ca644e04233af3620a65dbb850d3b0d79
