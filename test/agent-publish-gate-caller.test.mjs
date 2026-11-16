@@ -27,7 +27,8 @@ import { expect, test } from "vitest";
 
 const CALLER = ".github/workflows/agent-publish-gate.yml";
 const GATE = "cinatra-ai/ci/.github/workflows/agent-publish-gate.yml";
-const USES = new RegExp(`^${GATE.replace(/[.]/g, "\\.")}@([0-9a-f]{40})$`);
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const USES = new RegExp(`^${escapeRegExp(GATE)}@([0-9a-f]{40})$`);
 
 const callerPath = fileURLToPath(new URL(`../${CALLER}`, import.meta.url));
 const text = () => readFileSync(callerPath, "utf8");
