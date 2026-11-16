@@ -1,15 +1,23 @@
 // THE PACK CHECK RUNS ON EVERY CHANGE (cinatra-ai/cinatra#4150): the shared
 // agent pack publish gate lives in cinatra-ai/ci as a reusable workflow, and
-// this pack calls it from its own caller. This file pins that caller: it runs
-// on every pull request and on every push to main, it calls the shared gate
-// pinned to one commit, the `ref` input checks out that same commit (so the
-// gate code never comes from a moving branch), and it checks this package.
+// this pack calls it from its own caller. This file pins that caller by its
+// STRUCTURE, not by lines that look right: it reads the workflow as the small
+// block-mapping form it is written in, refuses everything else, and then
+// requires exactly this shape:
 //
-// The cases under "refused" change the committed caller one way each (a line
-// that only looks like the call, a condition, a filter, a second job, a moving
-// ref, a duplicate key) and must each be refused. The reading below still
-// matches single lines of text, so it lets many of them through; the next
-// commit reads the workflow's structure instead.
+//   on            pull_request with no filter, and push with branches [main]
+//   permissions   contents: read, nothing else
+//   jobs          ONE job, whose only keys are `uses` and `with`
+//   uses          the shared gate at one 40-hex commit
+//   with          package "." and ref, the SAME commit (so the gate code never
+//                 comes from a moving branch)
+//
+// A job with only `uses` and `with` has no `if`, no `needs` and passes no
+// secrets, so nothing in the file can skip the call or widen it. The cases
+// under "refused" change the committed caller one way each and must each be
+// refused: a line that only looks like the call (inside a run block, at step
+// level, under another key), a condition, a filter, a second job, a moving
+// ref, a duplicate key.
 
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -18,25 +26,107 @@ import { expect, test } from "vitest";
 
 const CALLER = ".github/workflows/agent-publish-gate.yml";
 const GATE = "cinatra-ai/ci/.github/workflows/agent-publish-gate.yml";
+const USES = new RegExp(`^${GATE.replace(/[.]/g, "\\.")}@([0-9a-f]{40})$`);
 
 const callerPath = fileURLToPath(new URL(`../${CALLER}`, import.meta.url));
 const text = () => readFileSync(callerPath, "utf8");
 
-const USES_RE =
-  /^\s*uses:\s*cinatra-ai\/ci\/\.github\/workflows\/agent-publish-gate\.yml@([0-9a-f]{40})(?:\s+#.*)?$/m;
+// One value of the subset: nothing (the key opens a mapping or is empty), a
+// quoted string, a flow list of plain words, or one plain word (it starts with
+// a letter, a digit, "_", "." or "/"). A trailing
+// comment is dropped. Everything else (a block scalar, an inline mapping, an
+// anchor, a tag, a value with spaces) is refused.
+function readValue(rest, n) {
+  if (rest === "" || rest.startsWith("#")) return null;
+  let m = /^"([^"\\]*)"(?:\s+#.*)?$/.exec(rest) || /^'([^']*)'(?:\s+#.*)?$/.exec(rest);
+  if (m) return m[1];
+  m = /^\[\s*([A-Za-z0-9_.\/-]+(?:\s*,\s*[A-Za-z0-9_.\/-]+)*)\s*\](?:\s+#.*)?$/.exec(rest);
+  if (m) return m[1].split(",").map((word) => word.trim());
+  m = /^([A-Za-z0-9_.\/][A-Za-z0-9_.\/@-]*)(?:\s+#.*)?$/.exec(rest);
+  if (m) return m[1];
+  throw new Error(`line ${n} holds a value this reader does not take`);
+}
 
-// Every reason the source is not this pack's caller, by matching its lines.
+// Reads nested `key:` / `key: value` lines, two spaces a level. Refuses a tab,
+// a carriage return, a line of any other form (a list item, a block scalar's
+// text, a document mark), an indentation that opens no mapping, and a key
+// written twice in one mapping.
+function readMappings(source) {
+  if (/[\t\r]/.test(source)) throw new Error("the file holds a tab or a carriage return");
+  const root = Object.create(null); // no inherited key: "__proto__" is a key like any other
+  const open = [{ indent: 0, map: root }];
+  let empty = null; // the last line, when it was a key with no value
+  source.split("\n").forEach((raw, index) => {
+    const n = index + 1;
+    const line = raw.replace(/ +$/, "");
+    if (line === "" || /^ *#/.test(line)) return;
+    const m = /^( *)([A-Za-z_][A-Za-z0-9_-]*):(?: +(.*))?$/.exec(line);
+    if (!m) throw new Error(`line ${n} is not "key:" or "key: value"`);
+    const indent = m[1].length;
+    const key = m[2];
+    if (empty && indent === empty.indent + 2) {
+      const child = Object.create(null);
+      empty.map[empty.key] = child;
+      open.push({ indent, map: child });
+    } else {
+      while (open.length > 1 && open[open.length - 1].indent > indent) open.pop();
+    }
+    empty = null;
+    const top = open[open.length - 1];
+    if (top.indent !== indent) throw new Error(`line ${n} is indented under no open mapping`);
+    if (Object.prototype.hasOwnProperty.call(top.map, key)) throw new Error(`line ${n} writes the key ${key} twice`);
+    const value = readValue(m[3] === undefined ? "" : m[3], n);
+    top.map[key] = value;
+    if (value === null) empty = { indent, map: top.map, key };
+  });
+  return root;
+}
+
+const isMapping = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const keysOf = (value) => (isMapping(value) ? Object.keys(value).sort().join(",") : "no mapping");
+
+// Every reason the source is not the one caller this pack may have. An empty
+// list means: the workflow is exactly the call of the shared gate.
 function callerFaults(source) {
+  let doc;
+  try {
+    doc = readMappings(source);
+  } catch (error) {
+    return [error.message];
+  }
   const faults = [];
-  if (!/^on:\s*$/m.test(source)) faults.push("no on:");
-  if (!/^\s{2}pull_request:\s*$/m.test(source)) faults.push("no pull_request trigger");
-  if (!/^\s{2}push:\s*\n\s{4}branches:\s*\[\s*main\s*\]\s*$/m.test(source)) faults.push("no push to main trigger");
-  const uses = source.match(USES_RE);
-  if (!uses) faults.push("no uses line of the shared gate at a 40-hex commit");
-  const refs = [...source.matchAll(/^\s*ref:\s*["']?([^"'\s]+)["']?\s*$/gm)].map((m) => m[1]);
-  if (!uses || refs.length !== 1 || refs[0] !== uses[1]) faults.push("not one ref equal to the pinned commit");
-  const pkgs = [...source.matchAll(/^\s*package:\s*["']?([^"'\s]+)["']?\s*$/gm)].map((m) => m[1]);
-  if (pkgs.length !== 1 || pkgs[0] !== ".") faults.push("not one package, this one");
+  if (keysOf(doc) !== "jobs,name,on,permissions") faults.push(`the top-level keys are ${keysOf(doc)}`);
+  if (typeof doc.name !== "string") faults.push("name is not one word");
+  if (keysOf(doc.on) !== "pull_request,push") {
+    faults.push(`the triggers are ${keysOf(doc.on)}, not pull_request and push`);
+  } else {
+    if (doc.on.pull_request !== null) faults.push("pull_request carries a filter");
+    const push = doc.on.push;
+    if (keysOf(push) !== "branches" || !Array.isArray(push.branches) || push.branches.join(",") !== "main") {
+      faults.push("push is not exactly branches: [main]");
+    }
+  }
+  if (keysOf(doc.permissions) !== "contents" || doc.permissions.contents !== "read") {
+    faults.push("permissions is not exactly contents: read");
+  }
+  const names = isMapping(doc.jobs) ? Object.keys(doc.jobs) : [];
+  if (names.length !== 1) {
+    faults.push(`jobs holds ${names.length} jobs, not one`);
+    return faults;
+  }
+  const job = doc.jobs[names[0]];
+  if (keysOf(job) !== "uses,with") {
+    faults.push(`the job's keys are ${keysOf(job)}, not uses and with`);
+    return faults;
+  }
+  const pin = typeof job.uses === "string" ? USES.exec(job.uses) : null;
+  if (!pin) faults.push("uses is not the shared gate at a 40-hex commit");
+  if (keysOf(job.with) !== "package,ref") {
+    faults.push(`with holds ${keysOf(job.with)}, not package and ref`);
+  } else {
+    if (job.with.package !== ".") faults.push("with.package is not this package");
+    if (!pin || job.with.ref !== pin[1]) faults.push("with.ref is not the commit uses pins");
+  }
   return faults;
 }
 
