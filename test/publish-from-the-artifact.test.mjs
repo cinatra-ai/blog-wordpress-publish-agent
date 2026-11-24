@@ -197,7 +197,7 @@ test("nothing published means nothing written", () => {
   expect(
     bridgeNode().data.system,
     "the recipe states the empty patch, so no empty address is ever merged",
-  ).toMatch(/`addressPatch` is the empty patch: the same three keys, each the empty string/);
+  ).toMatch(/The empty patch is the same three keys, each the empty string/);
 });
 
 // ---------------------------------------------------------------------------

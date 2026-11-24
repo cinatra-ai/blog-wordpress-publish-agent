@@ -267,8 +267,8 @@ test("the published branch keeps the approval the card gave", () => {
   expect(section, "the prompt has a return step").toBeDefined();
   expect(
     approvedIn(section),
-    "both envelopes of the return step carry approved: true after the card approved",
-  ).toEqual(["true", "true"]);
+    "every envelope of the return step carries approved: true after the card approved",
+  ).toEqual(["true", "true", "true"]);
 });
 
 // ---------------------------------------------------------------------------
@@ -317,13 +317,19 @@ const returnEnvelopes = () =>
     JSON.parse(m[1]),
   );
 
+/** The documented envelopes by name, in the order the return step lists them. */
+const envelope = (name) => {
+  const [published, partial, failure] = returnEnvelopes();
+  return { published, partial, failure }[name];
+};
+
 /** The members of the declared address patch. */
 const patchMembers = () =>
   Object.keys(node("publish").outputs.find((o) => o.title === "addressPatch").json_schema.properties);
 
-test("the return step documents one published envelope and one failure envelope", () => {
+test("the return step documents a published, a partial and a failure envelope", () => {
   const envelopes = returnEnvelopes();
-  expect(envelopes.map((e) => e.addressWritten)).toEqual([true, false]);
+  expect(envelopes.map((e) => e.addressWritten)).toEqual([true, false, false]);
 });
 
 test("every documented envelope is a valid answer under the declared outputs", () => {
@@ -333,7 +339,7 @@ test("every documented envelope is a valid answer under the declared outputs", (
 });
 
 test("the failure envelope publishes nothing and gives the write step nothing to write", () => {
-  const failure = returnEnvelopes().find((e) => e.addressWritten === false);
+  const failure = envelope("failure");
   expect(failure.approved).toBe(true);
   expect(failure.publishedUrl).toBe("");
   expect(failure.publishedExternalId).toBe("");
@@ -343,8 +349,10 @@ test("the failure envelope publishes nothing and gives the write step nothing to
 
 test("the return step chooses the envelope by one rule, and only it sets addressWritten", () => {
   const text = sectionOf(/^### Step \d+ — return$/m);
-  expect(text).toMatch(/Return the published envelope ONLY when all three members of the patch are non-empty strings/);
-  expect(text).toMatch(/a partial result \(an address without an id, or an id without an address\)/);
+  expect(text).toMatch(/Choose the envelope by one rule, from what the site returned:/);
+  expect(text).toMatch(/- Complete: all three members of the patch are non-empty strings[^\n]*Return the published envelope\./);
+  expect(text).toMatch(/- Partial: the site reported the page as publicly published and returned its address or its own id, but not both\. Return the partial envelope\./);
+  expect(text).toMatch(/- Nothing: [^\n]*Return the failure envelope\./);
   const outside = node("publish").data.system.replace(text, "");
   expect(
     outside,
@@ -367,21 +375,59 @@ const leafRenders = (patch) => {
   return names.every((n) => has(patch, n) && patch[n] !== "") ? JSON.stringify(patch) : "{}";
 };
 
-test("an address without an id is the failure envelope, and the write renders {}", () => {
-  const failure = returnEnvelopes().find((e) => e.addressWritten === false);
-  // The site published the page and returned its address but no id: the answer
-  // is the failure envelope, its summary naming the address.
-  const partial = {
-    ...failure,
+// A partial result: the site published the page and returned one receipt value
+// but not the other. The answer keeps that value at the top level, so the run
+// can tell an existing page from no publish, and the patch stays empty, so
+// nothing is written.
+const partialAnswers = () => {
+  const base = {
+    ...envelope("partial"),
     postArtifactId: "art-1",
     postRepresentationRevisionId: "rev-1",
-    summary: "Published at https://example.com/a-post/ but the site returned no id.",
   };
-  expect(answerViolations(partial)).toEqual([]);
+  return [
+    {
+      ...base,
+      publishedUrl: "https://example.com/a-post/",
+      publishedExternalId: "",
+      summary: "Published at https://example.com/a-post/ but the site returned no id.",
+    },
+    {
+      ...base,
+      publishedUrl: "",
+      publishedExternalId: "42",
+      summary: "Published as page 42 but the site returned no address.",
+    },
+  ];
+};
+
+test("the partial envelope keeps the returned receipt at the top level and an empty patch", () => {
+  const partial = envelope("partial");
+  expect(partial.approved).toBe(true);
   expect(partial.addressWritten).toBe(false);
   expect(Object.keys(partial.addressPatch)).toEqual(patchMembers());
   expect(Object.values(partial.addressPatch).every((v) => v === "")).toBe(true);
-  expect(leafRenders(partial.addressPatch)).toBe("{}");
+  expect(partial.publishedUrl, "the top-level address is what the site returned").not.toBe("");
+  expect(partial.publishedExternalId, "the top-level id is what the site returned").not.toBe("");
+  for (const answer of partialAnswers()) {
+    expect(answerViolations(answer)).toEqual([]);
+    expect(answer.addressWritten).toBe(false);
+    expect(Object.values(answer.addressPatch).every((v) => v === "")).toBe(true);
+  }
+});
+
+test("a partial result is distinguishable from no publish by its top-level receipt", () => {
+  const noPublish = (a) => a.publishedUrl === "" && a.publishedExternalId === "";
+  expect(noPublish(envelope("failure")), "the failure envelope has no receipt").toBe(true);
+  for (const answer of partialAnswers()) {
+    expect(noPublish(answer), "a partial answer carries the receipt the site returned").toBe(false);
+  }
+});
+
+test("the write leaf renders {} for a partial result", () => {
+  for (const answer of partialAnswers()) {
+    expect(leafRenders(answer.addressPatch)).toBe("{}");
+  }
   // Even a half-filled patch the model should not build writes nothing.
   expect(
     leafRenders({
@@ -393,13 +439,13 @@ test("an address without an id is the failure envelope, and the write renders {}
 });
 
 test("the published envelope fills every member of the patch", () => {
-  const published = returnEnvelopes().find((e) => e.addressWritten === true);
+  const published = envelope("published");
   expect(Object.keys(published.addressPatch)).toEqual(patchMembers());
   expect(Object.values(published.addressPatch).every((v) => v !== "")).toBe(true);
 });
 
 test("the strict check refuses the empty object as an address patch", () => {
-  const failure = returnEnvelopes().find((e) => e.addressWritten === false);
+  const failure = envelope("failure");
   expect(answerViolations({ ...failure, addressPatch: {} })).toEqual(
     patchMembers().map((name) => `answer.addressPatch.${name} is missing`),
   );
