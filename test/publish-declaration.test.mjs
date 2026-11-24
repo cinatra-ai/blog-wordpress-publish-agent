@@ -167,18 +167,15 @@ test("the pack keeps no confirmation of its own in front of the publishing step"
       .map(([id]) => id),
     "the steps of the flow that wait for a person",
   ).toEqual(["review_post"]);
-  expect(
-    (manifest.cinatra.fieldRenderers ?? []).filter((r) => Object.hasOwn(r, "component")),
-    "the package ships no screen component",
-  ).toEqual([]);
-  expect(existsSync(new URL("../src/renderers/draft-confirm.tsx", import.meta.url))).toBe(false);
+  expect(has(manifest.cinatra, "fieldRenderers"), "no field renderer is declared").toBe(false);
+  expect(existsSync(new URL("../src/renderers", import.meta.url)), "no screen source ships").toBe(false);
+  expect(JSON.stringify(oas), "no step of the flow names a renderer").not.toMatch(/x-renderer/);
 });
 
 test("the step's prompt does not pause for a confirmation of its own", () => {
   const system = node("publish").data.system;
   expect(system).not.toMatch(/INTERRUPT/);
   expect(system).not.toMatch(/HITL/);
-  expect(system).not.toMatch(/draft-confirm/);
   expect(system, "the prompt says the person has already decided").toMatch(
     /the person has already approved this publish/,
   );
@@ -244,21 +241,4 @@ test("the published branch keeps the approval the card gave", () => {
     approvedIn(section),
     "the published branch returns approved: true after the card approved",
   ).toEqual(["true"]);
-});
-
-// A run that paused at the former confirmation screen before this version keeps
-// that screen's id in its stored question. The package keeps declaring the id,
-// with no component, so the application still reads that question as a step in
-// the middle of the run and draws its own schema form with Continue for it. The
-// flow never asks with the id: nothing in it names the screen.
-test("the former screen id stays declared, without a component, for a run paused before this version", () => {
-  expect(manifest.cinatra.fieldRenderers).toEqual([
-    {
-      id: "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm",
-      kind: "wordpress-draft-confirm",
-      priority: 90,
-      midRunHitl: true,
-    },
-  ]);
-  expect(JSON.stringify(oas), "the flow never names the former screen").not.toContain(":draft-confirm");
 });
