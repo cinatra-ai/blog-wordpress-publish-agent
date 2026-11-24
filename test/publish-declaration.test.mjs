@@ -341,6 +341,57 @@ test("the failure envelope publishes nothing and gives the write step nothing to
   expect(Object.values(failure.addressPatch).every((v) => v === "")).toBe(true);
 });
 
+test("the return step chooses the envelope by one rule, and only it sets addressWritten", () => {
+  const text = sectionOf(/^### Step \d+ — return$/m);
+  expect(text).toMatch(/Return the published envelope ONLY when all three members of the patch are non-empty strings/);
+  expect(text).toMatch(/a partial result \(an address without an id, or an id without an address\)/);
+  const outside = node("publish").data.system.replace(text, "");
+  expect(
+    outside,
+    "no other step sets addressWritten or describes when the patch is filled",
+  ).not.toMatch(/Set `addressWritten`|addressWritten`? (to|is) (true|false)|is the empty patch/);
+  expect(outside, "no other step chooses an envelope by the site's report alone").not.toMatch(
+    /publicly published, return/,
+  );
+});
+
+// The leaf's write condition, as the leaf states it: each named member is
+// present and non-empty.
+const leafRenders = (patch) => {
+  const leaf = node("write_address").data.input.data;
+  const cond = leaf.match(/\{% if ([^%]*) %\}/)[1];
+  const names = [...cond.matchAll(/\('([^']+)' in addressPatch and addressPatch\['\1'\]\)/g)].map(
+    (m) => m[1],
+  );
+  expect(names).toEqual(patchMembers());
+  return names.every((n) => has(patch, n) && patch[n] !== "") ? JSON.stringify(patch) : "{}";
+};
+
+test("an address without an id is the failure envelope, and the write renders {}", () => {
+  const failure = returnEnvelopes().find((e) => e.addressWritten === false);
+  // The site published the page and returned its address but no id: the answer
+  // is the failure envelope, its summary naming the address.
+  const partial = {
+    ...failure,
+    postArtifactId: "art-1",
+    postRepresentationRevisionId: "rev-1",
+    summary: "Published at https://example.com/a-post/ but the site returned no id.",
+  };
+  expect(answerViolations(partial)).toEqual([]);
+  expect(partial.addressWritten).toBe(false);
+  expect(Object.keys(partial.addressPatch)).toEqual(patchMembers());
+  expect(Object.values(partial.addressPatch).every((v) => v === "")).toBe(true);
+  expect(leafRenders(partial.addressPatch)).toBe("{}");
+  // Even a half-filled patch the model should not build writes nothing.
+  expect(
+    leafRenders({
+      wordpressPublishedUrl: "https://example.com/a-post/",
+      wordpressPublishedExternalId: "",
+      wordpressPublishedRevisionId: "rev-1",
+    }),
+  ).toBe("{}");
+});
+
 test("the published envelope fills every member of the patch", () => {
   const published = returnEnvelopes().find((e) => e.addressWritten === true);
   expect(Object.keys(published.addressPatch)).toEqual(patchMembers());
