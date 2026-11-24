@@ -118,10 +118,11 @@ test("the address is written back onto the SAME artifact, through the host's wri
     "the write lands on the artifact that was read, never a new row",
   ).toBe("{{ postArtifactId }}");
   // The patch reaches the artifact: the leaf hands objects_update the patch as
-  // JSON text encoding an object, under the key `data`, and the hint keeps
-  // `addressPatch` visible to the runtime's placeholder inference.
+  // JSON text encoding an object, under the key `data`, when every address
+  // member is non-empty, and `{}` otherwise. The hint keeps `addressPatch`
+  // visible to the runtime's placeholder inference.
   expect(write.data.input.data).toBe(
-    "{# pyagentspec-input-hint: {{ addressPatch }} #}{{ addressPatch | tojson }}",
+    "{# pyagentspec-input-hint: {{ addressPatch }} #}{% if ('wordpressPublishedUrl' in addressPatch and addressPatch['wordpressPublishedUrl']) and ('wordpressPublishedExternalId' in addressPatch and addressPatch['wordpressPublishedExternalId']) and ('wordpressPublishedRevisionId' in addressPatch and addressPatch['wordpressPublishedRevisionId']) %}{{ addressPatch | tojson }}{% else %}{}{% endif %}",
   );
   expect(
     write.metadata.cinatra.riskClass,
@@ -190,21 +191,13 @@ test("the patch's three members are declared, not left to an empty object level"
     schema.required,
     "every declared member is required — the contract derived from this declaration carries no optional key",
   ).toEqual(ADDRESS_KEYS);
-  expect(
-    patchOutput.description ?? "",
-    "the output's own description names the gap the closed contract cannot express, so decision (b) is recorded and not merely implied",
-  ).toMatch(/cannot express the empty patch/);
-  expect(
-    patchOutput.description ?? "",
-    "and it says plainly that the empty-patch run cannot satisfy both at once",
-  ).toMatch(/No answer can satisfy both at once/);
 });
 
 test("nothing published means nothing written", () => {
   expect(
     bridgeNode().data.system,
     "the recipe states the empty patch, so no empty address is ever merged",
-  ).toMatch(/`addressPatch` is `\{\}` exactly/);
+  ).toMatch(/`addressPatch` is the empty patch: the same three keys, each the empty string/);
 });
 
 // ---------------------------------------------------------------------------
@@ -424,7 +417,9 @@ test("the patch's key space is declared closed, not only described", () => {
 test("the write-back leaf hands the patch over as JSON text of exactly the three declared members", () => {
   const write = passthroughNodes().get("objects_update");
   // A template comment renders to nothing, so what the leaf renders is the rest.
-  const rest = write.data.input.data.replace(/\{#[\s\S]*?#\}/g, "");
+  const rest = write.data.input.data
+    .replace(/\{#[\s\S]*?#\}/g, "")
+    .replace(/^\{% if [^%]* %\}(\{\{ addressPatch \| tojson \}\})\{% else %\}\{\}\{% endif %\}$/, "$1");
   expect(rest).toBe("{{ addressPatch | tojson }}");
   const full =
     '{"wordpressPublishedExternalId": "42", "wordpressPublishedRevisionId": "rev-1", "wordpressPublishedUrl": "https://blog.example.com/hello-world/"}';

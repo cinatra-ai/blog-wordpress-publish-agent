@@ -213,7 +213,7 @@ test("the no-heading branch keeps the approval the card gave and publishes nothi
     "the no-heading branch returns approved: true after the card approved",
   ).toEqual(["true"]);
   expect(section).toMatch(/Publish nothing/);
-  expect(section).toMatch(/`addressPatch: \{\}`/);
+  expect(section).toMatch(/the failure envelope of Step 4/);
 });
 
 test("the no-ability branch keeps the approval the card gave", () => {
@@ -239,6 +239,100 @@ test("the published branch keeps the approval the card gave", () => {
   expect(section, "the prompt has a return step").toBeDefined();
   expect(
     approvedIn(section),
-    "the published branch returns approved: true after the card approved",
-  ).toEqual(["true"]);
+    "both envelopes of the return step carry approved: true after the card approved",
+  ).toEqual(["true", "true"]);
+});
+
+// ---------------------------------------------------------------------------
+// Every envelope the step documents is a valid answer under its declared outputs.
+// The runtime asks the model for a strict structured output: every declared
+// output and every declared member of addressPatch must appear, and no other
+// key may (docker/wayflow/agent_loader.py in cinatra, _strict_declared_subschema).
+// The checks below read the envelopes from the JSON blocks of the return step
+// and validate them against that contract, structurally.
+// ---------------------------------------------------------------------------
+
+const PRIMITIVE = { string: "string", boolean: "boolean", integer: "number", number: "number" };
+
+/** Every reason `value` is not a valid answer for the declared subschema at `path`. */
+const strictViolations = (schema, value, path) => {
+  const type = schema.json_schema?.type ?? schema.type;
+  if (type === "object") {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return [`${path} is not an object`];
+    }
+    const members = schema.json_schema?.properties ?? schema.properties ?? {};
+    const problems = [];
+    for (const name of Object.keys(members)) {
+      if (!has(value, name)) problems.push(`${path}.${name} is missing`);
+      else problems.push(...strictViolations(members[name], value[name], `${path}.${name}`));
+    }
+    for (const name of Object.keys(value)) {
+      if (!has(members, name)) problems.push(`${path}.${name} is not declared`);
+    }
+    return problems;
+  }
+  return typeof value === PRIMITIVE[type] ? [] : [`${path} is not a ${type}`];
+};
+
+/** The answer as the declared outputs of the step read it. */
+const answerViolations = (answer) =>
+  strictViolations(
+    { type: "object", properties: Object.fromEntries(node("publish").outputs.map((o) => [o.title, o])) },
+    answer,
+    "answer",
+  );
+
+/** The JSON blocks of the return step, parsed. */
+const returnEnvelopes = () =>
+  [...sectionOf(/^### Step \d+ — return$/m).matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) =>
+    JSON.parse(m[1]),
+  );
+
+/** The members of the declared address patch. */
+const patchMembers = () =>
+  Object.keys(node("publish").outputs.find((o) => o.title === "addressPatch").json_schema.properties);
+
+test("the return step documents one published envelope and one failure envelope", () => {
+  const envelopes = returnEnvelopes();
+  expect(envelopes.map((e) => e.addressWritten)).toEqual([true, false]);
+});
+
+test("every documented envelope is a valid answer under the declared outputs", () => {
+  for (const envelope of returnEnvelopes()) {
+    expect(answerViolations(envelope)).toEqual([]);
+  }
+});
+
+test("the failure envelope publishes nothing and gives the write step nothing to write", () => {
+  const failure = returnEnvelopes().find((e) => e.addressWritten === false);
+  expect(failure.approved).toBe(true);
+  expect(failure.publishedUrl).toBe("");
+  expect(failure.publishedExternalId).toBe("");
+  expect(Object.keys(failure.addressPatch)).toEqual(patchMembers());
+  expect(Object.values(failure.addressPatch).every((v) => v === "")).toBe(true);
+});
+
+test("the published envelope fills every member of the patch", () => {
+  const published = returnEnvelopes().find((e) => e.addressWritten === true);
+  expect(Object.keys(published.addressPatch)).toEqual(patchMembers());
+  expect(Object.values(published.addressPatch).every((v) => v !== "")).toBe(true);
+});
+
+test("the strict check refuses the empty object as an address patch", () => {
+  const failure = returnEnvelopes().find((e) => e.addressWritten === false);
+  expect(answerViolations({ ...failure, addressPatch: {} })).toEqual(
+    patchMembers().map((name) => `answer.addressPatch.${name} is missing`),
+  );
+});
+
+test("the write step writes the patch only when every declared member is non-empty", () => {
+  const leaf = node("write_address").data.input.data;
+  const gate = leaf.match(/\{% if ([^%]*) %\}\{\{ addressPatch \| tojson \}\}\{% else %\}\{\}\{% endif %\}/);
+  expect(gate, "the leaf renders the patch under one condition, else {}").not.toBeNull();
+  expect(gate[1], "the condition asks each declared member to be present and non-empty").toBe(
+    patchMembers()
+      .map((name) => `('${name}' in addressPatch and addressPatch['${name}'])`)
+      .join(" and "),
+  );
 });
