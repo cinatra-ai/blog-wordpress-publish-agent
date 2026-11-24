@@ -18,7 +18,7 @@
 // The pack check (cinatra-ai/ci, scripts/agent-publish-gate.mjs, at the commit
 // .github/workflows/agent-publish-gate.yml pins) walks back from a publishing step
 // through BranchingNodes only and refuses an InputMessageNode it reaches as a
-// confirm step of the pack's own. The reads of the post stand between the review
+// confirm step of the pack's own. The read of the pinned words stands between the review
 // and the publishing step, so the review is not that.
 //
 // These cases restate those rules over this pack's own flow; they run none of
@@ -114,12 +114,12 @@ test("every way from the start to the publishing step passes the review", () => 
   );
 });
 
-test("the review comes before the publishing step, with the reads of the post between them", () => {
+test("the review comes before the publishing step, with the read of the pinned words between them", () => {
   const order = (oas.nodes ?? []).map(refOf);
   expect(order.indexOf(REVIEW)).toBeGreaterThan(order.indexOf(START));
   expect(order.indexOf(REVIEW)).toBeLessThan(order.indexOf(PUBLISH));
   const edges = controlEdges(oas);
-  expect(edges.filter((e) => e.from === REVIEW).map((e) => e.to)).toEqual(["read_post_record"]);
+  expect(edges.filter((e) => e.from === REVIEW).map((e) => e.to)).toEqual(["read_post_text"]);
   expect(edges.filter((e) => e.to === REVIEW).map((e) => e.from)).toEqual([GATHER]);
   expect(pausesInFrontOf(oas, PUBLISH), "the pack check reaches no pause in front of the publishing step").toEqual([]);
 });
@@ -127,8 +127,7 @@ test("the review comes before the publishing step, with the reads of the post be
 test("the walk-back reading turns red for a review placed directly in front of the publishing step", () => {
   const moved = structuredClone(oas);
   moved.control_flow_connections = [
-    { from_node: { $component_ref: START }, to_node: { $component_ref: "read_post_record" } },
-    { from_node: { $component_ref: "read_post_record" }, to_node: { $component_ref: "read_post_text" } },
+    { from_node: { $component_ref: START }, to_node: { $component_ref: "read_post_text" } },
     { from_node: { $component_ref: "read_post_text" }, to_node: { $component_ref: REVIEW } },
     { from_node: { $component_ref: REVIEW }, to_node: { $component_ref: PUBLISH } },
   ];

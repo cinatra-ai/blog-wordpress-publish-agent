@@ -61,12 +61,11 @@ const outOf = (id) => edges.filter((e) => e.from === id);
 const START = "start";
 const GATHER_REVIEW = "gather_review_target";
 const REVIEW = "review_post";
-const READ_RECORD = "read_post_record";
 const READ_TEXT = "read_post_text";
 const PUBLISH = "publish";
 const WRITE_BACK = "write_address";
 const END = "end";
-const CHAIN = [START, GATHER_REVIEW, REVIEW, READ_RECORD, READ_TEXT, PUBLISH, WRITE_BACK, END];
+const CHAIN = [START, GATHER_REVIEW, REVIEW, READ_TEXT, PUBLISH, WRITE_BACK, END];
 
 // The tools of the WordPress connector the publish step names, and no other step.
 const SITE_TOOLS = ["wordpress_site_tool_write", "wordpress_site_tools_list"];
@@ -138,7 +137,7 @@ test("the flow is the one chain of steps this suite names, with no branch and no
     ["BranchingNode", "FlowNode", "Flow", "ParallelFlowNode"].includes(c.component_type),
   );
   expect(odd).toEqual([]);
-  // The one pause is the review in front of the reads (review-before-publish.test.mjs).
+  // The one pause is the review in front of the read (review-before-publish.test.mjs).
   expect(
     Object.entries(steps).filter(([, c]) => c.component_type === "InputMessageNode").map(([id]) => id),
   ).toEqual([REVIEW]);
@@ -170,11 +169,10 @@ test("the steps around the publish step are the host's own reads and the write-b
   );
   expect(tools).toEqual({
     [GATHER_REVIEW]: "artifacts_get",
-    [READ_RECORD]: "artifacts_get",
     [READ_TEXT]: "artifact_content_read",
     [WRITE_BACK]: "objects_update",
   });
-  for (const id of [GATHER_REVIEW, READ_RECORD, READ_TEXT]) expect(steps[id].metadata.cinatra.riskClass).toBe("read_only");
+  for (const id of [GATHER_REVIEW, READ_TEXT]) expect(steps[id].metadata.cinatra.riskClass).toBe("read_only");
 });
 
 // ---------------------------------------------------------------------------

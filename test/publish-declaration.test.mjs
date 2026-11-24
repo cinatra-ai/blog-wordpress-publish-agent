@@ -159,7 +159,7 @@ test("the pack keeps no confirmation of its own in front of the publishing step"
   );
   // The one step that waits for a person is the review of the post
   // (review-before-publish.test.mjs). The pack check walks back from the
-  // publishing step and refuses a pause it reaches; the reads of the post stand
+  // publishing step and refuses a pause it reaches; the read of the pinned words stands
   // between the review and the publishing step.
   expect(
     Object.entries(components)
@@ -206,6 +206,17 @@ test("the cut-short-read branch keeps the approval the card gave", () => {
     approvedIn(section),
     "the cut-short-read branch returns approved: true after the card approved",
   ).toEqual(["true"]);
+});
+
+test("the no-heading branch keeps the approval the card gave and publishes nothing", () => {
+  const section = sectionOf(/When `postText` carries no heading line/);
+  expect(section, "the prompt has a no-heading branch").toBeDefined();
+  expect(
+    approvedIn(section),
+    "the no-heading branch returns approved: true after the card approved",
+  ).toEqual(["true"]);
+  expect(section).toMatch(/Publish nothing/);
+  expect(section).toMatch(/`addressPatch: \{\}`/);
 });
 
 test("the no-ability branch keeps the approval the card gave", () => {
