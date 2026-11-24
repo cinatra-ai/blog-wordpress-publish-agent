@@ -7,9 +7,8 @@
 // `metadata.cinatra.publishRows: [{ label, input }]`, as label over value.
 // So this pack declares its publishing step and the card's rows, and keeps no
 // confirmation of its own: no screen component, no root `hitlScreens`, no pause
-// in the step's prompt. It keeps declaring the former screen's id, without a
-// component, only for a run that paused there before this version (the last
-// case below).
+// in the step's prompt. It no longer declares the former screen's id either
+// (see "Retired screen id" above the field renderer case below).
 //
 // Two readers decide whether the declaration counts, and the cases below read
 // the flow the way they do:
@@ -30,7 +29,7 @@
 // either reader. The kind gate in this repository's CI and the readers in
 // their own repositories stay the checks of record.
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import { expect, test } from "vitest";
 
@@ -147,6 +146,28 @@ test("the card shows the words that go out, never an internal identifier", () =>
   ]);
 });
 
+// Retired screen id: `@cinatra-ai/blog-wordpress-publish-agent:draft-confirm`.
+//
+// This package no longer declares its former screen, and the declaration is not
+// kept as a component-less entry. The application forbids product code from
+// naming a publish package's screen kind (its test is
+// `src/lib/__tests__/publish-pack-names-border.test.ts` in cinatra-ai/cinatra),
+// and its manifest generator rejects a `cinatra.fieldRenderers` declaration
+// whose kind the application does not know. So a package that declares
+// `publishes: true` cannot keep a component-less declaration of its former
+// screen.
+//
+// Recognising a stored step whose renderer id no binding declares any more is
+// the application's job, not the package's. The application's change
+// `resolveHitlGateRenderer` (packages/agents/src/orchestrator-mid-run-hitl.ts
+// in cinatra-ai/cinatra, branch fix/unregistered-renderer-falls-to-floor) draws
+// such a step with the application's own schema form and one Continue, on the
+// run panel, the stepper and the standalone card. That change merges before the
+// application pins this package version.
+//
+// Until then, a run parked at the former screen before this version shows "no
+// renderer configured" in the application. That state already exists on the
+// application's main for every retired id, and this package cannot change it.
 test("the pack keeps no confirmation of its own in front of the publishing step", () => {
   const rootCinatra = cinatraOf(oas);
   expect(has(rootCinatra, "hitlScreens"), "the flow root lists no screen").toBe(false);
@@ -170,6 +191,13 @@ test("the pack keeps no confirmation of its own in front of the publishing step"
   expect(has(manifest.cinatra, "fieldRenderers"), "no field renderer is declared").toBe(false);
   expect(existsSync(new URL("../src/renderers", import.meta.url)), "no screen source ships").toBe(false);
   expect(JSON.stringify(oas), "no step of the flow names a renderer").not.toMatch(/x-renderer/);
+  const RETIRED_SCREEN_ID = "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm";
+  for (const file of ["../package.json", "../cinatra/oas.json"]) {
+    expect(
+      readFileSync(new URL(file, import.meta.url), "utf8"),
+      `the retired screen id is not declared in ${file}`,
+    ).not.toContain(RETIRED_SCREEN_ID);
+  }
 });
 
 test("the step's prompt does not pause for a confirmation of its own", () => {
