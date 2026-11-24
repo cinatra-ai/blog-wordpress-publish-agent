@@ -1,14 +1,16 @@
 # Blog WordPress Publish Agent
 
-Publish a blog post to your WordPress site from the post itself — the exact version you continued with — and get the page's address back on the post. Nothing reaches the site before you choose Publish on Cinatra's publish card, so declining leaves the site untouched.
+Publish a blog post to your WordPress site from the post itself, in the exact version you continued with, and get the page's address back on the post. Nothing reaches the site until you choose Publish on Cinatra's publish card, so declining leaves the site untouched.
 
-To use this agent, connect a WordPress site to your Cinatra workspace via the marketplace, then trigger the agent with three required inputs: a `postArtifactId` (the blog post), a `postRepresentationRevisionId` (the version of it you continued with), and an `instanceId` (the connected WordPress site). After a review of that version, the agent reads the words of the version the review approved (that version, or the new version a Regenerate made and you then approved) through Cinatra's own artifact reads, waits for your decision on that card, and only then creates the page through the WordPress connector's site catalogue. If the review approves no version, the run stops before anything is read and says why.
+To use this agent, connect a WordPress site to your Cinatra workspace via the marketplace. Then trigger the agent with three required inputs: `postArtifactId` (the blog post), `postRepresentationRevisionId` (the version you continued with) and `instanceId` (the connected site).
 
-After Publish the page is created and the agent writes the address back onto the post itself, under `wordpressPublishedUrl`, beside the site's own id for the page (`wordpressPublishedExternalId`) and the version that was published (`wordpressPublishedRevisionId`). The agent returns those as `publishedUrl`, `publishedExternalId` and `approved`; it creates no new document of its own — a publish returns a receipt.
+The run stops twice. First, Cinatra reviews that version. Then the publish card waits for your decision. Only the version the review approved is published: your version, or the new one a Regenerate made and you approved. If the review approves no version, the run stops before anything is read and says why.
 
-The page's title is the pinned version's first heading, which the publish card shows with the words. Without a heading, nothing is published and the summary says so. The agent asks the site for a page that is publicly visible — a draft has no public address, so nothing is written back for one. If the pinned version comes back cut short, the agent publishes nothing rather than put out part of it.
+After Publish, the agent creates a public page and writes its address onto the post as `wordpressPublishedUrl`. It also writes the site's id for the page (`wordpressPublishedExternalId`) and the published version (`wordpressPublishedRevisionId`). It returns `publishedUrl`, `publishedExternalId` and `approved`, and creates no new document.
 
-If you decline, the run ends before the site is reached. If the site call fails, the agent returns an empty `publishedUrl` with a one-line `summary`, and nothing is written onto the post — never a half address, never an empty one. Common failure modes: wrong `instanceId` (site not connected), WordPress credentials expired (reconnect via marketplace settings), or a site whose catalogue offers no ability to create a post.
+The page title is the version's first heading. Without a heading, or if the version comes back cut short, nothing is published. If you decline, the site is never reached. If the site call fails, the agent returns an empty `publishedUrl` with a one-line `summary`, and writes nothing onto the post.
+
+Common failures: wrong `instanceId`, expired WordPress credentials (reconnect in marketplace settings), or a site that cannot create posts.
 
 ## Works with
 
@@ -16,7 +18,7 @@ If you decline, the run ends before the site is reached. If the site call fails,
 
 ## Capabilities
 
-- Publish the exact version of a post you continued with, straight from the post
+- Publish the exact version of a post you continued with
 - Wait for your decision before anything is created on the site
-- Write the page's address back onto the post, where the rest of the product can read it
-- Return the address, the site's own id for the page, and a one-line summary
+- Write the page's address back onto the post
+- Return the address, the site's id for the page, and a one-line summary
