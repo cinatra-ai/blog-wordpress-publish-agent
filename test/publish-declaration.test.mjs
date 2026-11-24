@@ -157,10 +157,16 @@ test("the pack keeps no confirmation of its own in front of the publishing step"
   expect(intoPublish, "the steps with a control edge into the publishing step").not.toContain(
     "InputMessageNode",
   );
+  // The one step that waits for a person is the review of the post
+  // (review-before-publish.test.mjs). The pack check walks back from the
+  // publishing step and refuses a pause it reaches; the reads of the post stand
+  // between the review and the publishing step.
   expect(
-    Object.values(components).map((c) => c?.component_type),
-    "no step of the flow waits for a person",
-  ).not.toContain("InputMessageNode");
+    Object.entries(components)
+      .filter(([, c]) => c?.component_type === "InputMessageNode")
+      .map(([id]) => id),
+    "the steps of the flow that wait for a person",
+  ).toEqual(["review_post"]);
   expect(
     (manifest.cinatra.fieldRenderers ?? []).filter((r) => Object.hasOwn(r, "component")),
     "the package ships no screen component",
