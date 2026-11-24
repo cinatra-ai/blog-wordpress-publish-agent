@@ -161,7 +161,7 @@ test("only the publish step names a tool of the WordPress connector, and it name
   }
 });
 
-test("the steps around the publish step are the host's own reads and the write-back, none of them a send or a publish (red: another tool or another passthrough step)", () => {
+test("the steps around the publish step are the host's own reads, the read of the approved revision through the pack's declared tool, and the write-back, none of them a send or a publish (red: another tool or another passthrough step)", () => {
   const tools = Object.fromEntries(
     apiSteps()
       .filter(([, c]) => !isModelStep(c))
@@ -169,10 +169,11 @@ test("the steps around the publish step are the host's own reads and the write-b
   );
   expect(tools).toEqual({
     [GATHER_REVIEW]: "artifacts_get",
-    [READ_TEXT]: "artifact_content_read",
+    [READ_TEXT]: "extension_tool",
     [WRITE_BACK]: "objects_update",
   });
   for (const id of [GATHER_REVIEW, READ_TEXT]) expect(steps[id].metadata.cinatra.riskClass).toBe("read_only");
+  expect(steps[READ_TEXT].data.input.name).toBe("approved_post_text");
 });
 
 // ---------------------------------------------------------------------------
