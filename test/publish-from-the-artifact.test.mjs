@@ -118,10 +118,11 @@ test("the address is written back onto the SAME artifact, through the host's wri
     "the write lands on the artifact that was read, never a new row",
   ).toBe("{{ postArtifactId }}");
   // The patch reaches the artifact: the leaf hands objects_update the patch as
-  // JSON text encoding an object, under the key `data`, and the hint keeps
-  // `addressPatch` visible to the runtime's placeholder inference.
+  // JSON text encoding an object, under the key `data`, when every address
+  // member is non-empty, and `{}` otherwise. The hint keeps `addressPatch`
+  // visible to the runtime's placeholder inference.
   expect(write.data.input.data).toBe(
-    "{# pyagentspec-input-hint: {{ addressPatch }} #}{{ addressPatch | tojson }}",
+    "{# pyagentspec-input-hint: {{ addressPatch }} #}{% if ('wordpressPublishedUrl' in addressPatch and addressPatch['wordpressPublishedUrl']) and ('wordpressPublishedExternalId' in addressPatch and addressPatch['wordpressPublishedExternalId']) and ('wordpressPublishedRevisionId' in addressPatch and addressPatch['wordpressPublishedRevisionId']) %}{{ addressPatch | tojson }}{% else %}{}{% endif %}",
   );
   expect(
     write.metadata.cinatra.riskClass,
@@ -190,21 +191,13 @@ test("the patch's three members are declared, not left to an empty object level"
     schema.required,
     "every declared member is required — the contract derived from this declaration carries no optional key",
   ).toEqual(ADDRESS_KEYS);
-  expect(
-    patchOutput.description ?? "",
-    "the output's own description names the gap the closed contract cannot express, so decision (b) is recorded and not merely implied",
-  ).toMatch(/cannot express the empty patch/);
-  expect(
-    patchOutput.description ?? "",
-    "and it says plainly that the empty-patch run cannot satisfy both at once",
-  ).toMatch(/No answer can satisfy both at once/);
 });
 
 test("nothing published means nothing written", () => {
   expect(
     bridgeNode().data.system,
     "the recipe states the empty patch, so no empty address is ever merged",
-  ).toMatch(/`addressPatch` is `\{\}` exactly/);
+  ).toMatch(/`addressPatch` is the empty patch: the same three keys, each the empty string/);
 });
 
 // ---------------------------------------------------------------------------
@@ -325,17 +318,60 @@ test("a cut-short read is never published as the pinned revision", () => {
   expect(recipe).toMatch(/Never publish a cut-short body/);
 });
 
-test("the page's title comes from the pinned words, not from the live record", () => {
-  const recipe = bridgeNode().data.system;
-  expect(recipe, "the title is pinned like the body").toMatch(
-    /Take the page's title from the first heading line of `postText`/,
-  );
+// The review pins one revision and the publish card shows the words that go
+// out (publishRows). The card draws a row only from a plain surfaced value, so
+// a title read from the artifact's CURRENT record (an object from
+// artifacts_get) could never be shown: a title taken from there would reach the
+// site unseen. So the title has exactly one source, the first heading of
+// `postText`, which is the very input the card's row draws, and no step after
+// the review reads the artifact's record at all.
+test("the page's title comes from the pinned words, the same input the publish card shows", () => {
+  const publish = bridgeNode();
+  const recipe = publish.data.system;
+  const cardInputs = (publish.metadata.cinatra.publishRows ?? []).map((r) => r.input);
+
+  // One source for the title, and it is a row of the card.
+  expect(recipe).toMatch(/Take the page's title from the first heading line of `postText`/);
+  expect(cardInputs, "the card shows the input the title is taken from").toContain("postText");
   expect(
-    recipe,
-    "the artifact's current title is a named fallback, never the first source",
-  ).toMatch(
-    /Only when the pinned words carry no heading at all may you fall back to `postArtifact\.title`/,
+    dataEdge("read_post_text", "text", "publish", "postText"),
+    "the shown input is the pinned read, the same value the step sends",
+  ).toBeTruthy();
+
+  // No fallback: a headingless revision publishes nothing.
+  expect(recipe).not.toMatch(/fall back/i);
+  expect(recipe).toMatch(/When `postText` carries no heading line[^]*?Publish nothing/);
+
+  // The step is given no record of the artifact, so no live value can reach the site.
+  expect(recipe).not.toMatch(/postArtifact\b(?!Id)/);
+  expect(publish.data.user).not.toMatch(/postArtifact\b(?!Id)/);
+  expect(titles(publish.inputs).sort()).toEqual(
+    ["instanceId", "postArtifactId", "postRepresentationRevisionId", "postText", "truncated"].sort(),
   );
+  const contentInputs = titles(publish.inputs).filter(
+    (t) => !["instanceId", "postArtifactId", "postRepresentationRevisionId", "truncated"].includes(t),
+  );
+  expect(contentInputs, "every input the page is made of is a row of the card").toEqual(
+    contentInputs.filter((t) => cardInputs.includes(t)),
+  );
+});
+
+test("no step after the review reads the artifact's current record (red: a record read feeding the publish)", () => {
+  const refOf = (r) => r?.$component_ref;
+  const edges = (oas.control_flow_connections ?? []).map((e) => [refOf(e.from_node), refOf(e.to_node)]);
+  const after = new Set();
+  const queue = ["review_post"];
+  while (queue.length > 0) {
+    const id = queue.shift();
+    for (const [from, to] of edges) if (from === id && !after.has(to)) (after.add(to), queue.push(to));
+  }
+  expect(after.has("publish"), "the publish step follows the review").toBe(true);
+  const recordReads = [...after].filter((id) => node(id)?.data?.tool === "artifacts_get");
+  expect(recordReads).toEqual([]);
+  const intoPublish = (oas.data_flow_connections ?? [])
+    .filter((e) => refOf(e.destination_node) === "publish")
+    .map((e) => refOf(e.source_node));
+  for (const src of intoPublish) expect(["start", "read_post_text"], src).toContain(src);
 });
 
 test("the page is published publicly — a draft has no address to write back", () => {
@@ -381,7 +417,9 @@ test("the patch's key space is declared closed, not only described", () => {
 test("the write-back leaf hands the patch over as JSON text of exactly the three declared members", () => {
   const write = passthroughNodes().get("objects_update");
   // A template comment renders to nothing, so what the leaf renders is the rest.
-  const rest = write.data.input.data.replace(/\{#[\s\S]*?#\}/g, "");
+  const rest = write.data.input.data
+    .replace(/\{#[\s\S]*?#\}/g, "")
+    .replace(/^\{% if [^%]* %\}(\{\{ addressPatch \| tojson \}\})\{% else %\}\{\}\{% endif %\}$/, "$1");
   expect(rest).toBe("{{ addressPatch | tojson }}");
   const full =
     '{"wordpressPublishedExternalId": "42", "wordpressPublishedRevisionId": "rev-1", "wordpressPublishedUrl": "https://blog.example.com/hello-world/"}';

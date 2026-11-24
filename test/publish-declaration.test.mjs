@@ -7,9 +7,8 @@
 // `metadata.cinatra.publishRows: [{ label, input }]`, as label over value.
 // So this pack declares its publishing step and the card's rows, and keeps no
 // confirmation of its own: no screen component, no root `hitlScreens`, no pause
-// in the step's prompt. It keeps declaring the former screen's id, without a
-// component, only for a run that paused there before this version (the last
-// case below).
+// in the step's prompt. It no longer declares the former screen's id either
+// (see "Retired screen id" above the field renderer case below).
 //
 // Two readers decide whether the declaration counts, and the cases below read
 // the flow the way they do:
@@ -30,7 +29,7 @@
 // either reader. The kind gate in this repository's CI and the readers in
 // their own repositories stay the checks of record.
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import { expect, test } from "vitest";
 
@@ -147,6 +146,28 @@ test("the card shows the words that go out, never an internal identifier", () =>
   ]);
 });
 
+// Retired screen id: `@cinatra-ai/blog-wordpress-publish-agent:draft-confirm`.
+//
+// This package no longer declares its former screen, and the declaration is not
+// kept as a component-less entry. The application forbids product code from
+// naming a publish package's screen kind (its test is
+// `src/lib/__tests__/publish-pack-names-border.test.ts` in cinatra-ai/cinatra),
+// and its manifest generator rejects a `cinatra.fieldRenderers` declaration
+// whose kind the application does not know. So a package that declares
+// `publishes: true` cannot keep a component-less declaration of its former
+// screen.
+//
+// Recognising a stored step whose renderer id no binding declares any more is
+// the application's job, not the package's. The application's change
+// `resolveHitlGateRenderer` (packages/agents/src/orchestrator-mid-run-hitl.ts
+// in cinatra-ai/cinatra, branch fix/unregistered-renderer-falls-to-floor) draws
+// such a step with the application's own schema form and one Continue, on the
+// run panel, the stepper and the standalone card. That change merges before the
+// application pins this package version.
+//
+// Until then, a run parked at the former screen before this version shows "no
+// renderer configured" in the application. That state already exists on the
+// application's main for every retired id, and this package cannot change it.
 test("the pack keeps no confirmation of its own in front of the publishing step", () => {
   const rootCinatra = cinatraOf(oas);
   expect(has(rootCinatra, "hitlScreens"), "the flow root lists no screen").toBe(false);
@@ -157,22 +178,32 @@ test("the pack keeps no confirmation of its own in front of the publishing step"
   expect(intoPublish, "the steps with a control edge into the publishing step").not.toContain(
     "InputMessageNode",
   );
+  // The one step that waits for a person is the review of the post
+  // (review-before-publish.test.mjs). The pack check walks back from the
+  // publishing step and refuses a pause it reaches; the read of the pinned words stands
+  // between the review and the publishing step.
   expect(
-    Object.values(components).map((c) => c?.component_type),
-    "no step of the flow waits for a person",
-  ).not.toContain("InputMessageNode");
-  expect(
-    (manifest.cinatra.fieldRenderers ?? []).filter((r) => Object.hasOwn(r, "component")),
-    "the package ships no screen component",
-  ).toEqual([]);
-  expect(existsSync(new URL("../src/renderers/draft-confirm.tsx", import.meta.url))).toBe(false);
+    Object.entries(components)
+      .filter(([, c]) => c?.component_type === "InputMessageNode")
+      .map(([id]) => id),
+    "the steps of the flow that wait for a person",
+  ).toEqual(["review_post"]);
+  expect(has(manifest.cinatra, "fieldRenderers"), "no field renderer is declared").toBe(false);
+  expect(existsSync(new URL("../src/renderers", import.meta.url)), "no screen source ships").toBe(false);
+  expect(JSON.stringify(oas), "no step of the flow names a renderer").not.toMatch(/x-renderer/);
+  const RETIRED_SCREEN_ID = "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm";
+  for (const file of ["../package.json", "../cinatra/oas.json"]) {
+    expect(
+      readFileSync(new URL(file, import.meta.url), "utf8"),
+      `the retired screen id is not declared in ${file}`,
+    ).not.toContain(RETIRED_SCREEN_ID);
+  }
 });
 
 test("the step's prompt does not pause for a confirmation of its own", () => {
   const system = node("publish").data.system;
   expect(system).not.toMatch(/INTERRUPT/);
   expect(system).not.toMatch(/HITL/);
-  expect(system).not.toMatch(/draft-confirm/);
   expect(system, "the prompt says the person has already decided").toMatch(
     /the person has already approved this publish/,
   );
@@ -202,6 +233,17 @@ test("the cut-short-read branch keeps the approval the card gave", () => {
   ).toEqual(["true"]);
 });
 
+test("the no-heading branch keeps the approval the card gave and publishes nothing", () => {
+  const section = sectionOf(/When `postText` carries no heading line/);
+  expect(section, "the prompt has a no-heading branch").toBeDefined();
+  expect(
+    approvedIn(section),
+    "the no-heading branch returns approved: true after the card approved",
+  ).toEqual(["true"]);
+  expect(section).toMatch(/Publish nothing/);
+  expect(section).toMatch(/the failure envelope of Step 4/);
+});
+
 test("the no-ability branch keeps the approval the card gave", () => {
   const section = sectionOf(/If the listing offers no such ability/);
   expect(section, "the prompt has a no-ability branch").toBeDefined();
@@ -225,23 +267,100 @@ test("the published branch keeps the approval the card gave", () => {
   expect(section, "the prompt has a return step").toBeDefined();
   expect(
     approvedIn(section),
-    "the published branch returns approved: true after the card approved",
-  ).toEqual(["true"]);
+    "both envelopes of the return step carry approved: true after the card approved",
+  ).toEqual(["true", "true"]);
 });
 
-// A run that paused at the former confirmation screen before this version keeps
-// that screen's id in its stored question. The package keeps declaring the id,
-// with no component, so the application still reads that question as a step in
-// the middle of the run and draws its own schema form with Continue for it. The
-// flow never asks with the id: nothing in it names the screen.
-test("the former screen id stays declared, without a component, for a run paused before this version", () => {
-  expect(manifest.cinatra.fieldRenderers).toEqual([
-    {
-      id: "@cinatra-ai/blog-wordpress-publish-agent:draft-confirm",
-      kind: "wordpress-draft-confirm",
-      priority: 90,
-      midRunHitl: true,
-    },
-  ]);
-  expect(JSON.stringify(oas), "the flow never names the former screen").not.toContain(":draft-confirm");
+// ---------------------------------------------------------------------------
+// Every envelope the step documents is a valid answer under its declared outputs.
+// The runtime asks the model for a strict structured output: every declared
+// output and every declared member of addressPatch must appear, and no other
+// key may (docker/wayflow/agent_loader.py in cinatra, _strict_declared_subschema).
+// The checks below read the envelopes from the JSON blocks of the return step
+// and validate them against that contract, structurally.
+// ---------------------------------------------------------------------------
+
+const PRIMITIVE = { string: "string", boolean: "boolean", integer: "number", number: "number" };
+
+/** Every reason `value` is not a valid answer for the declared subschema at `path`. */
+const strictViolations = (schema, value, path) => {
+  const type = schema.json_schema?.type ?? schema.type;
+  if (type === "object") {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return [`${path} is not an object`];
+    }
+    const members = schema.json_schema?.properties ?? schema.properties ?? {};
+    const problems = [];
+    for (const name of Object.keys(members)) {
+      if (!has(value, name)) problems.push(`${path}.${name} is missing`);
+      else problems.push(...strictViolations(members[name], value[name], `${path}.${name}`));
+    }
+    for (const name of Object.keys(value)) {
+      if (!has(members, name)) problems.push(`${path}.${name} is not declared`);
+    }
+    return problems;
+  }
+  return typeof value === PRIMITIVE[type] ? [] : [`${path} is not a ${type}`];
+};
+
+/** The answer as the declared outputs of the step read it. */
+const answerViolations = (answer) =>
+  strictViolations(
+    { type: "object", properties: Object.fromEntries(node("publish").outputs.map((o) => [o.title, o])) },
+    answer,
+    "answer",
+  );
+
+/** The JSON blocks of the return step, parsed. */
+const returnEnvelopes = () =>
+  [...sectionOf(/^### Step \d+ — return$/m).matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) =>
+    JSON.parse(m[1]),
+  );
+
+/** The members of the declared address patch. */
+const patchMembers = () =>
+  Object.keys(node("publish").outputs.find((o) => o.title === "addressPatch").json_schema.properties);
+
+test("the return step documents one published envelope and one failure envelope", () => {
+  const envelopes = returnEnvelopes();
+  expect(envelopes.map((e) => e.addressWritten)).toEqual([true, false]);
+});
+
+test("every documented envelope is a valid answer under the declared outputs", () => {
+  for (const envelope of returnEnvelopes()) {
+    expect(answerViolations(envelope)).toEqual([]);
+  }
+});
+
+test("the failure envelope publishes nothing and gives the write step nothing to write", () => {
+  const failure = returnEnvelopes().find((e) => e.addressWritten === false);
+  expect(failure.approved).toBe(true);
+  expect(failure.publishedUrl).toBe("");
+  expect(failure.publishedExternalId).toBe("");
+  expect(Object.keys(failure.addressPatch)).toEqual(patchMembers());
+  expect(Object.values(failure.addressPatch).every((v) => v === "")).toBe(true);
+});
+
+test("the published envelope fills every member of the patch", () => {
+  const published = returnEnvelopes().find((e) => e.addressWritten === true);
+  expect(Object.keys(published.addressPatch)).toEqual(patchMembers());
+  expect(Object.values(published.addressPatch).every((v) => v !== "")).toBe(true);
+});
+
+test("the strict check refuses the empty object as an address patch", () => {
+  const failure = returnEnvelopes().find((e) => e.addressWritten === false);
+  expect(answerViolations({ ...failure, addressPatch: {} })).toEqual(
+    patchMembers().map((name) => `answer.addressPatch.${name} is missing`),
+  );
+});
+
+test("the write step writes the patch only when every declared member is non-empty", () => {
+  const leaf = node("write_address").data.input.data;
+  const gate = leaf.match(/\{% if ([^%]*) %\}\{\{ addressPatch \| tojson \}\}\{% else %\}\{\}\{% endif %\}/);
+  expect(gate, "the leaf renders the patch under one condition, else {}").not.toBeNull();
+  expect(gate[1], "the condition asks each declared member to be present and non-empty").toBe(
+    patchMembers()
+      .map((name) => `('${name}' in addressPatch and addressPatch['${name}'])`)
+      .join(" and "),
+  );
 });

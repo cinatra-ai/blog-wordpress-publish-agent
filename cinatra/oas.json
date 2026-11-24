@@ -3,7 +3,7 @@
   "component_type": "Flow",
   "id": "blog-wordpress-publish-agent-flow",
   "name": "Blog WordPress Publish Agent",
-  "description": "Publishes the blog post ARTIFACT revision a person continued with to a connected WordPress site, and writes the site's address back onto that artifact. The flow takes an artifact reference (postArtifactId + postRepresentationRevisionId), never raw text and never a blog record: a deterministic step reads the artifact's record and the pinned revision's words through the host's dependency-scoped artifact reads (artifacts_get + artifact_content_read, admitted by this package's declared @cinatra-ai/blog-post-artifact edge); the application holds the run in front of the orchestration step, which is declared publishes: true, until a person decides on the application's own publish card, so nothing reaches the site before that decision; only after Publish does that step create the page through the WordPress connector's own site catalogue (wordpress_site_tools_list + wordpress_site_tool_write); a second deterministic step merges the address onto the artifact's data through objects_update. The publish returns a receipt, never a new artifact.",
+  "description": "Publishes the blog post ARTIFACT revision a person continued with to a connected WordPress site, and writes the site's address back onto that artifact. The flow takes an artifact reference (postArtifactId + postRepresentationRevisionId), never raw text and never a blog record: the review's projection step reads the artifact's record (artifacts_get) and a deterministic step reads the pinned revision's words (artifact_content_read), both through the host's dependency-scoped artifact reads admitted by this package's declared @cinatra-ai/blog-post-artifact edge; the page's title is the first heading of those pinned words, which the publish card shows, never the artifact's current title; before the words are read the run parks on a review of exactly that revision (an InputMessageNode marked metadata.cinatra.artifactReview.targetsInput), so the application's artifact review is decided earlier in the same run; the application holds the run in front of the orchestration step, which is declared publishes: true, until a person decides on the application's own publish card, so nothing reaches the site before that decision; only after Publish does that step create the page through the WordPress connector's own site catalogue (wordpress_site_tools_list + wordpress_site_tool_write); a second deterministic step merges the address onto the artifact's data through objects_update. The publish returns a receipt, never a new artifact.",
   "metadata": {
     "cinatra": {
       "type": "flow",
@@ -72,7 +72,10 @@
       "$component_ref": "start"
     },
     {
-      "$component_ref": "read_post_record"
+      "$component_ref": "gather_review_target"
+    },
+    {
+      "$component_ref": "review_post"
     },
     {
       "$component_ref": "read_post_text"
@@ -90,19 +93,29 @@
   "control_flow_connections": [
     {
       "component_type": "ControlFlowEdge",
-      "name": "start_to_read_post_record",
+      "name": "start_to_gather_review_target",
       "from_node": {
         "$component_ref": "start"
       },
       "to_node": {
-        "$component_ref": "read_post_record"
+        "$component_ref": "gather_review_target"
       }
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "read_post_record_to_read_post_text",
+      "name": "gather_review_target_to_review_post",
       "from_node": {
-        "$component_ref": "read_post_record"
+        "$component_ref": "gather_review_target"
+      },
+      "to_node": {
+        "$component_ref": "review_post"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "review_post_to_read_post_text",
+      "from_node": {
+        "$component_ref": "review_post"
       },
       "to_node": {
         "$component_ref": "read_post_text"
@@ -142,27 +155,51 @@
   "data_flow_connections": [
     {
       "component_type": "DataFlowEdge",
-      "name": "start_postArtifactId_to_read_post_record_postArtifactId",
+      "name": "start_postArtifactId_to_gather_review_target_postArtifactId",
       "source_node": {
         "$component_ref": "start"
       },
       "source_output": "postArtifactId",
       "destination_node": {
-        "$component_ref": "read_post_record"
+        "$component_ref": "gather_review_target"
       },
       "destination_input": "postArtifactId"
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "start_cinatra_run_id_to_read_post_record_cinatra_run_id",
+      "name": "start_postRepresentationRevisionId_to_gather_review_target_postRepresentationRevisionId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "postRepresentationRevisionId",
+      "destination_node": {
+        "$component_ref": "gather_review_target"
+      },
+      "destination_input": "postRepresentationRevisionId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_cinatra_run_id_to_gather_review_target_cinatra_run_id",
       "source_node": {
         "$component_ref": "start"
       },
       "source_output": "cinatra_run_id",
       "destination_node": {
-        "$component_ref": "read_post_record"
+        "$component_ref": "gather_review_target"
       },
       "destination_input": "cinatra_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "gather_review_target_reviewTargets_to_review_post_reviewTargets",
+      "source_node": {
+        "$component_ref": "gather_review_target"
+      },
+      "source_output": "reviewTargets",
+      "destination_node": {
+        "$component_ref": "review_post"
+      },
+      "destination_input": "reviewTargets"
     },
     {
       "component_type": "DataFlowEdge",
@@ -235,18 +272,6 @@
         "$component_ref": "publish"
       },
       "destination_input": "instanceId"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "read_post_record_artifact_to_publish_postArtifact",
-      "source_node": {
-        "$component_ref": "read_post_record"
-      },
-      "source_output": "artifact",
-      "destination_node": {
-        "$component_ref": "publish"
-      },
-      "destination_input": "postArtifact"
     },
     {
       "component_type": "DataFlowEdge",
@@ -431,22 +456,29 @@
         }
       ]
     },
-    "read_post_record": {
+    "gather_review_target": {
       "component_type": "ApiNode",
-      "id": "read_post_record",
-      "name": "Read the post artifact's record",
+      "id": "gather_review_target",
+      "name": "Gather the review's target",
       "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
       "http_method": "POST",
       "data": {
         "tool": "artifacts_get",
         "input": {
-          "artifactId": "{{ postArtifactId }}"
+          "artifactId": "{{ postArtifactId }}",
+          "reviewTargets": "[{\"artifactId\": \"{{ postArtifactId }}\", \"representationRevisionId\": \"{{ postRepresentationRevisionId }}\"}]"
         },
-        "agent_run_id": "{{ cinatra_run_id }}"
+        "agent_run_id": "{{ cinatra_run_id }}",
+        "result_input_passthrough": true,
+        "result_id_field": "ok"
       },
       "inputs": [
         {
           "title": "postArtifactId",
+          "type": "string"
+        },
+        {
+          "title": "postRepresentationRevisionId",
           "type": "string"
         },
         {
@@ -457,8 +489,9 @@
       ],
       "outputs": [
         {
-          "title": "artifact",
-          "type": "object"
+          "title": "reviewTargets",
+          "type": "string",
+          "default": "[]"
         }
       ],
       "metadata": {
@@ -466,9 +499,38 @@
           "riskClass": "read_only",
           "requiresApproval": false,
           "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
-          "description": "Deterministic dependency-scoped artifact read: the post artifact's own record (title, mime, latest revision). Admitted by this package's declared @cinatra-ai/blog-post-artifact edge, bound to the run's organisation and audited host-side. The orchestration step takes the page's title from it."
+          "description": "The projection step of the review in front of the publish. It reads the post artifact's record through the host's dependency-scoped artifacts_get, so an artifact this package may not read fails the run before any review opens, and the host echoes the call's input back (result_input_passthrough), so the reference the person continued with (postArtifactId + postRepresentationRevisionId) reaches the review step as the one-target set, as JSON text, in the input its marker names. It writes nothing."
         }
       }
+    },
+    "review_post": {
+      "component_type": "InputMessageNode",
+      "id": "review_post",
+      "name": "Review the post before it is published",
+      "metadata": {
+        "cinatra": {
+          "riskClass": "read_only",
+          "requiresApproval": true,
+          "description": "The review of the post revision this run publishes. The marker below names the input that carries the run's own target set, so the host's review core pins exactly the revision the person continued with (the revision the publish step later reads and sends) and opens its artifact review while the run parks here. The decision is the application's review, not this flow's: this flow owns the pause and shows no screen of its own. The application opens its publish card only after a person approved this review earlier in the same run; a declined review, or a set the core refuses, never reaches the card. The read of the pinned words stands between this pause and the publishing step, so this is the review, not a confirm step of the publish.",
+          "artifactReview": {
+            "targetsInput": "reviewTargets"
+          }
+        }
+      },
+      "inputs": [
+        {
+          "title": "reviewTargets",
+          "type": "string",
+          "default": "[]"
+        }
+      ],
+      "outputs": [
+        {
+          "title": "reviewDecision",
+          "type": "string",
+          "default": ""
+        }
+      ]
     },
     "read_post_text": {
       "component_type": "ApiNode",
@@ -522,7 +584,7 @@
           "riskClass": "read_only",
           "requiresApproval": false,
           "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
-          "description": "Deterministic dependency-scoped content read of the PINNED representation revision — the words the person continued with, and the only body this agent publishes. The revision id is an input, never the latest revision, so an edit made after the person continued is not what reaches the site."
+          "description": "Deterministic dependency-scoped content read of the PINNED representation revision \u2014 the words the person continued with, and the only body this agent publishes. The revision id is an input, never the latest revision, so an edit made after the person continued is not what reaches the site."
         }
       }
     },
@@ -534,8 +596,8 @@
       "http_method": "POST",
       "data": {
         "agent_id": "blog-wordpress-publish-agent",
-        "system": "You are a blog-WordPress-publish orchestrator. Follow the instructions below step-by-step. Return a single JSON object with {postArtifactId, postRepresentationRevisionId, publishedUrl, publishedExternalId, addressPatch, addressWritten, approved, summary} — nothing else.\n\n# Blog WordPress Publish Agent\n\nYou publish ONE blog-post artifact revision to a connected WordPress site and hand the site's address back so the deterministic step behind you can write it onto the artifact.\n\nThe application asks the person before this step runs: it holds the run in front of you on its own publish card, and you run only after the person chose Publish there. So the person has already approved this publish, and every envelope you return carries `approved: true`: a failure shows in `publishedUrl`, `addressWritten` and the `summary`, never in `approved`. Ask nothing of your own and never wait for a person.\n\n## What you are given\n\n- `postArtifactId: string` — the blog post artifact (`@cinatra-ai/blog-post-artifact:post`).\n- `postRepresentationRevisionId: string` — THE REVISION THE PERSON CONTINUED WITH. It is pinned; nothing later is published.\n- `postText: string` — the words of exactly that revision, already read for you by the deterministic step in front of you (the host's dependency-scoped artifact content read). This is the ONLY body you publish.\n- `postArtifact: object` — that artifact's own record (`title`, `mime`, timestamps). It is the artifact's CURRENT record, not the pinned revision, so it is not a source of published words. Take the page's title from the first heading line of `postText` — the revision the person continued with. Only when the pinned words carry no heading at all may you fall back to `postArtifact.title`, and the `summary` must then say the title came from the artifact's record rather than from the pinned revision.\n- `truncated: boolean` — whether the pinned read came back cut short. See Step 0.\n- `instanceId: string` — the connected WordPress site.\n\nYou do NOT re-word, re-generate, summarise or extend `postText`. The bytes you publish are the bytes of the pinned revision.\n\n## Tool discipline\n\nYou may call exactly these 2 primitives, both on the WordPress connector:\n\n- `wordpress_site_tools_list({ instanceId })` — the site's own catalogue of abilities, each with its input schema.\n- `wordpress_site_tool_write({ instanceId, toolName, args })` — call one of them, with `args` matching the schema that listing gave you.\n\nCall NOTHING else. In particular: you never read or write an artifact yourself (the steps around you do that through the host's own primitives), and you never reach a blog record.\n\n## Step-by-step recipe\n\n### Step 0 — the pinned words must be whole\n\nWhen `truncated` is true the read came back cut short, so what you hold is NOT the whole pinned revision. Publish nothing and return the envelope of Step 4 with `approved: true`, `publishedUrl: \"\"`, `publishedExternalId: \"\"`, `addressPatch: {}`, `addressWritten: false` and a `summary` naming the truncation — the person did approve; the read is what failed. Never publish a cut-short body, and never call it the pinned revision.\n\n### Step 1 — find the site's ability that creates a post\n\n```\nwordpress_site_tools_list({ instanceId: <instanceId> })\n```\n\nChoose the ability that creates a post/page from a title and a body AND can make it PUBLICLY VISIBLE — its advertised input schema must carry the argument that publishes the page (a WordPress `status` of `publish`, or whatever that schema names). Match on the advertised input schema, never on a name you assumed. An ability whose only outcome is a draft does NOT satisfy this step: a draft has no public address, so there is nothing to write back for it. If the listing offers no such ability, return the envelope with `approved: true`, `addressPatch: {}`, `addressWritten: false` and a summary naming the site and what was missing — the person did approve; the site offers no way to publish the page.\n\n### Step 2 — create the page\n\n```\nwordpress_site_tool_write({\n  instanceId: <instanceId>,\n  toolName: <the ability you chose>,\n  args: <its advertised arguments, carrying the title, postText, and the status value that publishes the page publicly>,\n})\n```\n\nOn an agent run this call waits for the person's recorded decision before the site changes.\n\nFrom the result read:\n\n- the page's public address → `publishedUrl`\n- the site's own id for that page → `publishedExternalId`\n\nIf the call throws, returns no address, or returns a page the site does not report as publicly published (a draft, pending or private state), return the envelope with `approved: true`, `publishedUrl: \"\"`, `addressPatch: {}`, `addressWritten: false` and a summary naming the failure — the person did approve; the site write is what failed. Only a page the site reports as publicly published carries an address worth writing back.\n\n### Step 3 — build the write-back patch\n\nThe deterministic step behind you merges `addressPatch` onto the post artifact's own data through the host's write-back primitive. Build it with EXACTLY these three keys and no others:\n\n```json\n{\n  \"wordpressPublishedUrl\": \"<publishedUrl>\",\n  \"wordpressPublishedExternalId\": \"<publishedExternalId>\",\n  \"wordpressPublishedRevisionId\": \"<postRepresentationRevisionId>\"\n}\n```\n\nWhen nothing was published — a cut-short read, no ability, a failed call, or no address in the result — `addressPatch` is `{}` exactly. An empty patch merges nothing, so no address, no half address and no empty string is ever written onto the artifact. Never guess an address, and never put one in the patch that the site did not return. The patch's key space is CLOSED: those three keys and nothing else may ever appear in it. Never add a key of your own, and never a field of the artifact itself (`title`, `mime`, `content` or any other) — the step behind you merges the patch straight onto the artifact's own data, so a key you invent is written onto the artifact. Every value must be a non-empty string the site actually returned (the revision id being the one you were given). A key you cannot fill that way is not put in the patch, and a patch you cannot fill completely is `{}`. Set `addressWritten` to true only when you built the complete three-key patch, and false in every other case — that is what the run reports about the address.\n\n### Step 4 — return\n\n```json\n{\n  \"postArtifactId\": \"<postArtifactId>\",\n  \"postRepresentationRevisionId\": \"<postRepresentationRevisionId>\",\n  \"publishedUrl\": \"<publishedUrl or empty>\",\n  \"publishedExternalId\": \"<publishedExternalId or empty>\",\n  \"addressPatch\": { },\n  \"addressWritten\": false,\n  \"approved\": true,\n  \"summary\": \"<one-line explanation a person can read>\"\n}\n```\n",
-        "user": "{# pyagentspec-input-hint: {{ postArtifactId }} {{ postRepresentationRevisionId }} {{ instanceId }} {{ postText }} {{ postArtifact }} {{ truncated }} #}Publish the pinned revision of the blog post artifact to the connected WordPress site.\n\nInputs:\n- postArtifactId: {{ postArtifactId }}\n- postRepresentationRevisionId: {{ postRepresentationRevisionId }}\n- instanceId: {{ instanceId }}\n- postArtifact: {{ postArtifact }}\n- postText: {{ postText }}\n- truncated: {{ truncated }}",
+        "system": "You are a blog-WordPress-publish orchestrator. Follow the instructions below step-by-step. Return a single JSON object with {postArtifactId, postRepresentationRevisionId, publishedUrl, publishedExternalId, addressPatch, addressWritten, approved, summary} \u2014 nothing else.\n\n# Blog WordPress Publish Agent\n\nYou publish ONE blog-post artifact revision to a connected WordPress site and hand the site's address back so the deterministic step behind you can write it onto the artifact.\n\nThe application asks the person before this step runs: it holds the run in front of you on its own publish card, and you run only after the person chose Publish there. So the person has already approved this publish, and every envelope you return carries `approved: true`: a failure shows in `publishedUrl`, `addressWritten` and the `summary`, never in `approved`. Ask nothing of your own and never wait for a person.\n\n## What you are given\n\n- `postArtifactId: string` \u2014 the blog post artifact (`@cinatra-ai/blog-post-artifact:post`).\n- `postRepresentationRevisionId: string` \u2014 THE REVISION THE PERSON CONTINUED WITH. It is pinned; nothing later is published.\n- `postText: string` \u2014 the words of exactly that revision, already read for you by the deterministic step in front of you (the host's dependency-scoped artifact content read). This is the ONLY body you publish.\n- `truncated: boolean` \u2014 whether the pinned read came back cut short. See Step 0.\n- `instanceId: string` \u2014 the connected WordPress site.\n\nYou do NOT re-word, re-generate, summarise or extend `postText`. The bytes you publish are the bytes of the pinned revision.\n\n## The page's title\n\nTake the page's title from the first heading line of `postText` \u2014 the revision the person continued with, the words the application's publish card shows before this step runs. The title comes from nowhere else: you are given no record of the artifact, you never take a title from the artifact's current state, and you never make one up. When the pinned words carry no heading line at all, there is no title the person saw, so you publish nothing (see Step 0b).\n\n## Tool discipline\n\nYou may call exactly these 2 primitives, both on the WordPress connector:\n\n- `wordpress_site_tools_list({ instanceId })` \u2014 the site's own catalogue of abilities, each with its input schema.\n- `wordpress_site_tool_write({ instanceId, toolName, args })` \u2014 call one of them, with `args` matching the schema that listing gave you.\n\nCall NOTHING else. In particular: you never read or write an artifact yourself (the steps around you do that through the host's own primitives), and you never reach a blog record.\n\n## Step-by-step recipe\n\n### Step 0 \u2014 the pinned words must be whole\n\nWhen `truncated` is true the read came back cut short, so what you hold is NOT the whole pinned revision. Publish nothing and return the failure envelope of Step 4 (`approved: true`) with a `summary` naming the truncation \u2014 the person did approve; the read is what failed. Never publish a cut-short body, and never call it the pinned revision.\n\n### Step 0b \u2014 the title must be in the pinned words\n\nWhen `postText` carries no heading line, the pinned revision holds no title the person saw on the publish card. Publish nothing and return the failure envelope of Step 4 (`approved: true`) with a `summary` saying the pinned revision has no heading to take the page's title from \u2014 the person did approve; the pinned words give no title. Never publish a page whose title the person did not see.\n\n### Step 1 \u2014 find the site's ability that creates a post\n\n```\nwordpress_site_tools_list({ instanceId: <instanceId> })\n```\n\nChoose the ability that creates a post/page from a title and a body AND can make it PUBLICLY VISIBLE \u2014 its advertised input schema must carry the argument that publishes the page (a WordPress `status` of `publish`, or whatever that schema names). Match on the advertised input schema, never on a name you assumed. An ability whose only outcome is a draft does NOT satisfy this step: a draft has no public address, so there is nothing to write back for it. If the listing offers no such ability, return the failure envelope of Step 4 (`approved: true`) with a summary naming the site and what was missing \u2014 the person did approve; the site offers no way to publish the page.\n\n### Step 2 \u2014 create the page\n\n```\nwordpress_site_tool_write({\n  instanceId: <instanceId>,\n  toolName: <the ability you chose>,\n  args: <its advertised arguments, carrying the title, postText, and the status value that publishes the page publicly>,\n})\n```\n\nOn an agent run this call waits for the person's recorded decision before the site changes.\n\nFrom the result read:\n\n- the page's public address \u2192 `publishedUrl`\n- the site's own id for that page \u2192 `publishedExternalId`\n\nIf the call throws, returns no address, or returns a page the site does not report as publicly published (a draft, pending or private state), return the failure envelope of Step 4 (`approved: true`) with a summary naming the failure \u2014 the person did approve; the site write is what failed. Only a page the site reports as publicly published carries an address worth writing back.\n\n### Step 3 \u2014 build the write-back patch\n\nThe deterministic step behind you merges `addressPatch` onto the post artifact's own data through the host's write-back primitive. Build it with EXACTLY these three keys and no others:\n\n```json\n{\n  \"wordpressPublishedUrl\": \"<publishedUrl>\",\n  \"wordpressPublishedExternalId\": \"<publishedExternalId>\",\n  \"wordpressPublishedRevisionId\": \"<postRepresentationRevisionId>\"\n}\n```\n\nWhen nothing was published \u2014 a cut-short read, no heading in the pinned words, no ability, a failed call, or no address in the result \u2014 `addressPatch` is the empty patch: the same three keys, each the empty string `\"\"`. The step behind you writes the patch only when all three values are non-empty, so the empty patch merges nothing: no address, no half address and no empty string is ever written onto the artifact. Never guess an address, and never put one in the patch that the site did not return. The patch's key space is CLOSED: those three keys and nothing else may ever appear in it. Never add a key of your own, and never a field of the artifact itself (`title`, `mime`, `content` or any other) \u2014 the step behind you merges the patch straight onto the artifact's own data, so a key you invent is written onto the artifact. In the complete patch every value is a non-empty string the site actually returned (the revision id being the one you were given). A patch you cannot fill completely that way is the empty patch, with all three values `\"\"`. Set `addressWritten` to true only when you built the complete three-key patch, and false in every other case \u2014 that is what the run reports about the address.\n\n### Step 4 \u2014 return\n\nWhen the site reports the page as publicly published, return:\n\n```json\n{\n  \"postArtifactId\": \"<postArtifactId>\",\n  \"postRepresentationRevisionId\": \"<postRepresentationRevisionId>\",\n  \"publishedUrl\": \"<publishedUrl>\",\n  \"publishedExternalId\": \"<publishedExternalId>\",\n  \"addressPatch\": {\n    \"wordpressPublishedUrl\": \"<publishedUrl>\",\n    \"wordpressPublishedExternalId\": \"<publishedExternalId>\",\n    \"wordpressPublishedRevisionId\": \"<postRepresentationRevisionId>\"\n  },\n  \"addressWritten\": true,\n  \"approved\": true,\n  \"summary\": \"<one-line explanation a person can read>\"\n}\n```\n\nWhen nothing was published, return this failure envelope, with a one-line `summary` that names the cause:\n\n```json\n{\n  \"postArtifactId\": \"<postArtifactId>\",\n  \"postRepresentationRevisionId\": \"<postRepresentationRevisionId>\",\n  \"publishedUrl\": \"\",\n  \"publishedExternalId\": \"\",\n  \"addressPatch\": {\n    \"wordpressPublishedUrl\": \"\",\n    \"wordpressPublishedExternalId\": \"\",\n    \"wordpressPublishedRevisionId\": \"\"\n  },\n  \"addressWritten\": false,\n  \"approved\": true,\n  \"summary\": \"<one-line explanation a person can read>\"\n}\n```\n",
+        "user": "{# pyagentspec-input-hint: {{ postArtifactId }} {{ postRepresentationRevisionId }} {{ instanceId }} {{ postText }} {{ truncated }} #}Publish the pinned revision of the blog post artifact to the connected WordPress site.\n\nInputs:\n- postArtifactId: {{ postArtifactId }}\n- postRepresentationRevisionId: {{ postRepresentationRevisionId }}\n- instanceId: {{ instanceId }}\n- postText: {{ postText }}\n- truncated: {{ truncated }}",
         "cinatra_llm": {
           "preferredProvider": "openai",
           "preferredModel": "gpt-5.5"
@@ -557,10 +619,6 @@
         {
           "title": "postText",
           "type": "string"
-        },
-        {
-          "title": "postArtifact",
-          "type": "object"
         },
         {
           "title": "truncated",
@@ -587,21 +645,21 @@
         {
           "title": "addressPatch",
           "type": "object",
-          "description": "The write-back patch the deterministic step behind this one merges onto the post artifact's own data. Its three members are the closed key space this step's own recipe already names, each a non-empty string: the two address members exactly as the site returned them, and the revision member the pinned revision this step was given. Declaring them is what makes the address reach the artifact at all: an object level with no declared members is asked for as a closed, empty object, so the patch came back with nothing in it and the write merged nothing. THE GAP THIS DECLARATION DOES NOT CLOSE, named rather than hidden: the contract derived from this declaration requires every declared member and admits no other key, so it cannot express the empty patch the recipe still asks for when nothing was published — declined, no ability, a failed call, or no address in the result. No answer can satisfy both at once: on such a run the contract leaves no shape that is also the empty patch, so the two cannot be reconciled inside this declaration and the conflict is recorded here rather than papered over. That case stays governed by the recipe's own words, which forbid a guessed address and forbid an empty or half value in the patch, because the write merges every top-level key it is given straight onto the artifact; and what the run reports about the address remains addressWritten, which is true only when the complete three-key patch was built.",
+          "description": "The write-back patch the deterministic step behind this one merges onto the post artifact's own data. Every envelope carries all three members, because the contract derived from this declaration requires every declared member and admits no other key. When the site published the page, each member is a non-empty string: the two address members exactly as the site returned them, and the revision member the pinned revision this step was given. When nothing was published (a cut-short read, no heading in the pinned words, no ability, a failed call, or no address in the result), each member is the empty string. The write step merges the patch only when all three members are non-empty, so the empty patch writes nothing onto the artifact. addressWritten is true only when the complete patch was built.",
           "json_schema": {
             "type": "object",
             "properties": {
               "wordpressPublishedUrl": {
                 "type": "string",
-                "description": "The address of the page the site reports as publicly published — the address a person can open. Taken from what the site returned, never guessed, and never the admin address of a draft."
+                "description": "The address of the page the site reports as publicly published \u2014 the address a person can open. Taken from what the site returned, never guessed, and never the admin address of a draft. The empty string when nothing was published."
               },
               "wordpressPublishedExternalId": {
                 "type": "string",
-                "description": "The site's own identifier for that published page, exactly as the site returned it."
+                "description": "The site's own identifier for that published page, exactly as the site returned it. The empty string when nothing was published."
               },
               "wordpressPublishedRevisionId": {
                 "type": "string",
-                "description": "The pinned representation revision that was published — the revision the person continued with, as it was given to this step."
+                "description": "The pinned representation revision that was published \u2014 the revision the person continued with, as it was given to this step. The empty string when nothing was published."
               }
             },
             "required": [
@@ -636,7 +694,7 @@
             }
           ],
           "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
-          "description": "Single ApiNode -> /api/llm-bridge. metadata.cinatra.toolboxes is INTENTIONALLY OMITTED so the model reaches the WordPress connector's wordpress_site_tools_list / wordpress_site_tool_write through the injected Cinatra self-MCP. The node declares publishes: true, so the application stops the run directly in front of it and asks the person on its own publish card BEFORE the site write; a decline ends the run before this step runs, so it leaves nothing behind to remove. publishRows names what the card shows: the words that go out. The node emits addressPatch — the three literal address keys, or {} when nothing was published — which the write_address step merges onto the artifact."
+          "description": "Single ApiNode -> /api/llm-bridge. metadata.cinatra.toolboxes is INTENTIONALLY OMITTED so the model reaches the WordPress connector's wordpress_site_tools_list / wordpress_site_tool_write through the injected Cinatra self-MCP. The node declares publishes: true, so the application stops the run directly in front of it and asks the person on its own publish card BEFORE the site write; a decline ends the run before this step runs, so it leaves nothing behind to remove. publishRows names what the card shows: the words that go out, which also carry the page's title, because the recipe takes the title only from the first heading of those pinned words (no heading: nothing is published). So every word the site receives is on the card; the step is given no record of the artifact, so no value from the artifact's current state can reach the site. The node emits addressPatch \u2014 the three literal address keys, each the empty string when nothing was published \u2014 which the write_address step merges onto the artifact."
         }
       }
     },
@@ -650,7 +708,7 @@
         "tool": "objects_update",
         "input": {
           "objectId": "{{ postArtifactId }}",
-          "data": "{# pyagentspec-input-hint: {{ addressPatch }} #}{{ addressPatch | tojson }}"
+          "data": "{# pyagentspec-input-hint: {{ addressPatch }} #}{% if ('wordpressPublishedUrl' in addressPatch and addressPatch['wordpressPublishedUrl']) and ('wordpressPublishedExternalId' in addressPatch and addressPatch['wordpressPublishedExternalId']) and ('wordpressPublishedRevisionId' in addressPatch and addressPatch['wordpressPublishedRevisionId']) %}{{ addressPatch | tojson }}{% else %}{}{% endif %}"
         },
         "agent_run_id": "{{ cinatra_run_id }}"
       },
@@ -685,13 +743,13 @@
           "requiresApproval": false,
           "publishes": false,
           "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
-          "description": "THE WRITE-BACK, and the only road it takes: objects_update merges the patch into the SAME artifact row's data (objects.data) — never a side channel, never a new artifact, never a blog record. The merge is shallow at the top level, which is why the address keys are flat and destination-prefixed: a second destination's write cannot clobber this one. An empty patch (nothing published) merges nothing. The patch travels under the key data as JSON TEXT encoding an object ({} when nothing was published), because the runtime renders every leaf of an ApiNode's data as a string; the application's objects_update seam parses that text into the object it merges, and an installation without that seam fails the write loudly rather than merging nothing.",
+          "description": "THE WRITE-BACK, and the only road it takes: objects_update merges the patch into the SAME artifact row's data (objects.data) \u2014 never a side channel, never a new artifact, never a blog record. The merge is shallow at the top level, which is why the address keys are flat and destination-prefixed: a second destination's write cannot clobber this one. The leaf writes the patch only when each of the three address members is present and non-empty; in every other case (the empty patch of a run that published nothing) it renders {}, which merges nothing. The patch travels under the key data as JSON TEXT encoding an object, because the runtime renders every leaf of an ApiNode's data as a string; the application's objects_update seam parses that text into the object it merges, and an installation without that seam fails the write loudly rather than merging nothing.",
           "addressPatchKeys": [
             "wordpressPublishedUrl",
             "wordpressPublishedExternalId",
             "wordpressPublishedRevisionId"
           ],
-          "addressPatchRule": "The patch's key space is closed to those keys. objects_update merges every top-level key it is given straight onto the artifact's own data, so a key outside this list would land on the artifact; an incomplete patch is {} exactly, which merges nothing. A runtime allowlist needs a deterministic write-back seam on the host side; until there is one, this declaration plus the orchestration recipe is the contract, and the pack's own suite asserts both."
+          "addressPatchRule": "The patch's key space is closed to those keys. objects_update merges every top-level key it is given straight onto the artifact's own data, so a key outside this list would land on the artifact; a patch with an empty or missing member renders as {}, which merges nothing. A runtime allowlist needs a deterministic write-back seam on the host side; until there is one, this declaration plus the orchestration recipe is the contract, and the pack's own suite asserts both."
         }
       }
     },
