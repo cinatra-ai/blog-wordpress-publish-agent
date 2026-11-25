@@ -134,16 +134,20 @@ test("the walk-back reading turns red for a review placed directly in front of t
   expect(pausesInFrontOf(moved, PUBLISH)).toEqual([REVIEW]);
 });
 
-test("the review pins exactly the revision the publishing step reads", () => {
+test("the review pins the revision the run started with, and the read and the publishing step take the revision its answer approved", () => {
   const into = dataEdges().filter((e) => e.to === REVIEW);
   expect(into).toEqual([{ from: GATHER, out: "reviewTargets", to: REVIEW, in: "reviewTargets" }]);
 
-  const fromStart = (to, name) => dataEdges().filter((e) => e.to === to && e.in === name).map((e) => `${e.from}.${e.out}`);
+  const sources = (to, name) => dataEdges().filter((e) => e.to === to && e.in === name).map((e) => `${e.from}.${e.out}`);
   for (const name of ["postArtifactId", "postRepresentationRevisionId"]) {
-    expect(fromStart(GATHER, name), name).toEqual([`${START}.${name}`]);
-    expect(fromStart("read_post_text", name), name).toEqual([`${START}.${name}`]);
-    expect(fromStart(PUBLISH, name), name).toEqual([`${START}.${name}`]);
+    expect(sources(GATHER, name), name).toEqual([`${START}.${name}`]);
   }
+  // The answer names the approved revision (publish-the-approved-revision.test.mjs).
+  expect(sources("read_post_text", "reviewDecision")).toEqual([`${REVIEW}.reviewDecision`]);
+  expect(sources("read_post_text", "postArtifactId"), "the artifact under review").toEqual([`${START}.postArtifactId`]);
+  expect(sources("read_post_text", "postRepresentationRevisionId")).toEqual([]);
+  expect(sources(PUBLISH, "postArtifactId")).toEqual(["read_post_text.artifactId"]);
+  expect(sources(PUBLISH, "postRepresentationRevisionId")).toEqual(["read_post_text.representationRevisionId"]);
 
   // The set the gather step sends, with its slots filled as the runtime fills them.
   const template = node(GATHER).data.input.reviewTargets;
