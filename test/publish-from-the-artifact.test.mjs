@@ -317,35 +317,42 @@ test("a cut-short read is never published as the pinned revision", () => {
   expect(recipe).toMatch(/Never publish a cut-short body/);
 });
 
-// The review pins one revision and the publish card shows the words that go
-// out (publishRows). The card draws a row only from a plain surfaced value, so
-// a title read from the artifact's CURRENT record (an object from
-// artifacts_get) could never be shown: a title taken from there would reach the
-// site unseen. So the title has exactly one source, the first heading of
-// `postText`, which is the very input the card's row draws, and no step after
-// the review reads the artifact's record at all.
-test("the page's title comes from the pinned words, the same input the publish card shows", () => {
+// The review pins one revision and the publish card shows what goes out
+// (publishRows). The draft writer files the post's title as the artifact's own
+// title and starts the body at its first `## ` section, so the pinned words
+// carry no title heading: a title taken from their first heading would be a
+// section heading, and a rule that wants a heading would publish nothing. So
+// the read step answers the title as plain text (the record's own title, else
+// a leading `# ` heading, never a `## ` one), the card shows it in its own row,
+// and the publishing step takes it from there and from nowhere else.
+test("the page's title is the title the read step answers, shown in its own row of the publish card", () => {
   const publish = bridgeNode();
   const recipe = publish.data.system;
   const cardInputs = (publish.metadata.cinatra.publishRows ?? []).map((r) => r.input);
 
   // One source for the title, and it is a row of the card.
-  expect(recipe).toMatch(/Take the page's title from the first heading line of `postText`/);
-  expect(cardInputs, "the card shows the input the title is taken from").toContain("postText");
+  expect(recipe).toMatch(/The page's title is `postTitle`, exactly as given/);
+  expect(recipe).toMatch(/never take one from a section heading of `postText`/);
+  expect(recipe).not.toMatch(/first heading/);
+  expect(cardInputs, "the card shows the title").toContain("postTitle");
+  expect(cardInputs, "the card shows the words").toContain("postText");
+  expect(
+    dataEdge("read_post_text", "title", "publish", "postTitle"),
+    "the shown title is the read step's answer, the same value the step sends",
+  ).toBeTruthy();
   expect(
     dataEdge("read_post_text", "text", "publish", "postText"),
-    "the shown input is the pinned read, the same value the step sends",
+    "the shown words are the pinned read, the same value the step sends",
   ).toBeTruthy();
 
-  // No fallback: a headingless revision publishes nothing.
-  expect(recipe).not.toMatch(/fall back/i);
-  expect(recipe).toMatch(/When `postText` carries no heading line[^]*?Publish nothing/);
+  // An empty title publishes nothing.
+  expect(recipe).toMatch(/When `postTitle` is empty[^]*?Publish nothing/);
 
-  // The step is given no record of the artifact, so no live value can reach the site.
+  // The step is given no record of the artifact: only the title the card shows.
   expect(recipe).not.toMatch(/postArtifact\b(?!Id)/);
   expect(publish.data.user).not.toMatch(/postArtifact\b(?!Id)/);
   expect(titles(publish.inputs).sort()).toEqual(
-    ["instanceId", "postArtifactId", "postRepresentationRevisionId", "postText", "truncated"].sort(),
+    ["instanceId", "postArtifactId", "postRepresentationRevisionId", "postText", "postTitle", "truncated"].sort(),
   );
   const contentInputs = titles(publish.inputs).filter(
     (t) => !["instanceId", "postArtifactId", "postRepresentationRevisionId", "truncated"].includes(t),
@@ -355,7 +362,7 @@ test("the page's title comes from the pinned words, the same input the publish c
   );
 });
 
-test("no step after the review reads the artifact's current record (red: a record read feeding the publish)", () => {
+test("the record read after the review reaches only the read step, never the publishing step (red: a record feeding the publish)", () => {
   const refOf = (r) => r?.$component_ref;
   const edges = (oas.control_flow_connections ?? []).map((e) => [refOf(e.from_node), refOf(e.to_node)]);
   const after = new Set();
@@ -366,7 +373,11 @@ test("no step after the review reads the artifact's current record (red: a recor
   }
   expect(after.has("publish"), "the publish step follows the review").toBe(true);
   const recordReads = [...after].filter((id) => node(id)?.data?.tool === "artifacts_get");
-  expect(recordReads).toEqual([]);
+  expect(recordReads).toEqual(["read_post_record"]);
+  const fromRecord = (oas.data_flow_connections ?? [])
+    .filter((e) => refOf(e.source_node) === "read_post_record")
+    .map((e) => `${refOf(e.destination_node)}.${e.destination_input}`);
+  expect(fromRecord).toEqual(["read_post_text.postRecord"]);
   const intoPublish = (oas.data_flow_connections ?? [])
     .filter((e) => refOf(e.destination_node) === "publish")
     .map((e) => refOf(e.source_node));

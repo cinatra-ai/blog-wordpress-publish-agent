@@ -25,6 +25,7 @@ import { manifest, node, oas } from "./__tests__/oas-contract.mjs";
 
 const START = "start";
 const REVIEW = "review_post";
+const RECORD = "read_post_record";
 const READ = "read_post_text";
 const PUBLISH = "publish";
 const WRITE = "write_address";
@@ -52,13 +53,15 @@ const rejection = (targets) =>
     review: { envelopeVersion: 1, decision: "rejected", reviewTaskId: "wayflow-task-1", comment: null, targets },
   });
 
-/** Fills every `{{ name }}` slot of the strings in `value` from `inputs`. */
+/** Fills every `{{ name }}` and `{{ name | tojson }}` slot of the strings in `value` from `inputs`. */
 function fill(value, inputs) {
   if (typeof value === "string") {
-    return value.replace(/\{#[\s\S]*?#\}/g, "").replace(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g, (_, name) => {
-      if (!Object.hasOwn(inputs, name)) throw new Error(`the slot ${name} has no input`);
-      return String(inputs[name]);
-    });
+    return value
+      .replace(/\{#[\s\S]*?#\}/g, "")
+      .replace(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*(\|\s*tojson\s*)?\}\}/g, (_, name, tojson) => {
+        if (!Object.hasOwn(inputs, name)) throw new Error(`the slot ${name} has no input`);
+        return tojson ? JSON.stringify(inputs[name]) : String(inputs[name]);
+      });
   }
   if (Array.isArray(value)) return value.map((v) => fill(v, inputs));
   if (value && typeof value === "object") {
@@ -81,14 +84,14 @@ async function declaredTool(name) {
  * given (what the card shows and what goes out), the write step's artifact, or
  * the refusal that stopped the run.
  */
-async function runToThePublishCard({ reviewDecision }) {
+async function runToThePublishCard({ reviewDecision, recordTitle = "The post's own title", words = WORDS }) {
   const reads = [];
   const contentRead = async ({ artifactId, representationRevisionId }) => {
     reads.push({ artifactId, representationRevisionId });
-    if (artifactId !== ARTIFACT || !Object.hasOwn(WORDS, representationRevisionId)) {
+    if (artifactId !== ARTIFACT || !Object.hasOwn(words, representationRevisionId)) {
       throw new Error("the revision does not resolve");
     }
-    return { artifactId, representationRevisionId, mime: "text/markdown", text: WORDS[representationRevisionId], truncated: false };
+    return { artifactId, representationRevisionId, mime: "text/markdown", text: words[representationRevisionId], truncated: false };
   };
 
   const outputs = {
@@ -123,8 +126,13 @@ async function runToThePublishCard({ reviewDecision }) {
       continue;
     }
     const data = fill(step.data, inputs);
-    if (data.tool === "artifacts_get") {
+    if (data.tool === "artifacts_get" && data.result_input_passthrough === true) {
       outputs[id] = { ...data.input };
+    } else if (data.tool === "artifacts_get") {
+      // The host answers the record as `{ artifact }` (artifacts_get without the echo).
+      outputs[id] = {
+        artifact: { artifactId: data.input.artifactId, title: recordTitle, objectType: "@cinatra-ai/blog-post-artifact:post" },
+      };
     } else if (data.tool === "artifact_content_read") {
       outputs[id] = await contentRead(data.input);
     } else if (data.tool === "extension_tool") {
@@ -180,6 +188,90 @@ test("an approval of the revision the run started with publishes that revision, 
   expect(intoRead, "and never the revision the run started with").not.toContain(`${START}.postRepresentationRevisionId`);
 });
 
+// THE PAGE'S TITLE. The pinned draft writer files the title as the artifact's
+// own title and starts the body at its first `## ` section, with no `# ` title
+// heading (cinatra-ai/blog-draft-writer-agent, cinatra/oas.json). The card's
+// Title row and the publishing step's title are the record's own title; only
+// when the record has none is a leading `# ` heading used, and a `## ` section
+// heading is never the title. The words go out unchanged.
+const DRAFTED = {
+  [ORIGINAL]: "## Why it matters\n\nThe first section of the drafted post.",
+  [SUCCESSOR]: "## Why it matters now\n\nThe regenerated first section.",
+};
+
+test("a drafted post whose body starts at a `## ` section is published under the post's own title, with its words unchanged (red: the first section heading as the title)", async () => {
+  const run = await runToThePublishCard({
+    reviewDecision: approval([{ artifactId: ARTIFACT, representationRevisionId: SUCCESSOR }]),
+    recordTitle: "  Ten ways to ship faster  ",
+    words: DRAFTED,
+  });
+  expect(run.refusal).toBeNull();
+  expect(run.card.Title).toBe("Ten ways to ship faster");
+  expect(run.publishInputs.postTitle).toBe("Ten ways to ship faster");
+  expect(run.card["Post text"]).toBe(DRAFTED[SUCCESSOR]);
+  expect(run.publishInputs.postText).toBe(DRAFTED[SUCCESSOR]);
+});
+
+test("a post with no title of its own takes a leading `# ` heading of the approved words", async () => {
+  const run = await runToThePublishCard({
+    reviewDecision: approval([{ artifactId: ARTIFACT, representationRevisionId: SUCCESSOR }]),
+    recordTitle: null,
+  });
+  expect(run.card.Title).toBe("The regenerated post");
+  expect(run.publishInputs.postTitle).toBe("The regenerated post");
+  expect(run.publishInputs.postText, "the heading stays in the words").toBe(WORDS[SUCCESSOR]);
+});
+
+test("a post with no title of its own and only `## ` sections gets an empty title, never a section heading (red: the first section heading as the title)", async () => {
+  const run = await runToThePublishCard({
+    reviewDecision: approval([{ artifactId: ARTIFACT, representationRevisionId: ORIGINAL }]),
+    recordTitle: "   ",
+    words: DRAFTED,
+  });
+  expect(run.card.Title).toBe("");
+  expect(run.publishInputs.postTitle).toBe("");
+  expect(run.publishInputs.postText).toBe(DRAFTED[ORIGINAL]);
+});
+
+test("the title comes only from the record of the approved artifact (red: a record of another artifact names the title)", async () => {
+  const entry = (manifest.cinatra.tools ?? []).find((t) => t.name === node(READ).data.input.name);
+  const mod = await import(new URL(`../${entry.module.replace(/^\.\//, "")}`, import.meta.url).href);
+  const call = (postRecord) =>
+    mod.extensionTool({
+      input: {
+        artifactId: ARTIFACT,
+        reviewDecision: approval([{ artifactId: ARTIFACT, representationRevisionId: SUCCESSOR }]),
+        postRecord,
+      },
+      ports: {
+        artifacts: {
+          contentRead: async ({ representationRevisionId }) => ({
+            representationRevisionId,
+            text: DRAFTED[SUCCESSOR],
+            truncated: false,
+          }),
+        },
+      },
+    });
+  expect((await call(JSON.stringify({ artifactId: ARTIFACT, title: "Mine" }))).title).toBe("Mine");
+  expect((await call(JSON.stringify({ artifactId: "art-other", title: "Other" }))).title).toBe("");
+  expect((await call("not json")).title).toBe("");
+  expect((await call(undefined)).title).toBe("");
+});
+
+test("the record read is the host's artifacts_get, after the review, feeding the read step's postRecord", () => {
+  const record = node(RECORD);
+  expect(record.data.tool).toBe("artifacts_get");
+  expect(record.data.result_input_passthrough).toBeUndefined();
+  expect(record.metadata.cinatra.riskClass).toBe("read_only");
+  const from = oas.control_flow_connections.filter((e) => refOf(e.to_node) === RECORD).map((e) => refOf(e.from_node));
+  expect(from).toEqual([REVIEW]);
+  const into = oas.data_flow_connections
+    .filter((e) => refOf(e.destination_node) === READ && e.destination_input === "postRecord")
+    .map((e) => `${refOf(e.source_node)}.${e.source_output}`);
+  expect(into).toEqual([`${RECORD}.artifact`]);
+});
+
 const NO_APPROVED_REVISION = [
   ["a legacy rejection", rejection([{ artifactId: ARTIFACT, representationRevisionId: SUCCESSOR }])],
   ["an empty answer", ""],
@@ -228,9 +320,10 @@ test("the publishing step and the write-back take the approved artifact and revi
   expect(into(PUBLISH, "postRepresentationRevisionId")).toEqual([`${READ}.representationRevisionId`]);
   expect(into(PUBLISH, "postText")).toEqual([`${READ}.text`]);
   expect(into(PUBLISH, "truncated")).toEqual([`${READ}.truncated`]);
+  expect(into(PUBLISH, "postTitle")).toEqual([`${READ}.title`]);
   expect(writeTargetSource()).toEqual([`${READ}.artifactId`]);
   const cardInputs = (node(PUBLISH).metadata.cinatra.publishRows ?? []).map((r) => r.input);
-  expect(cardInputs).toEqual(["postText"]);
+  expect(cardInputs).toEqual(["postTitle", "postText"]);
 });
 
 test("the read is the module this pack declares, shipped in the package, and its refusals fit the host's bounds", async () => {

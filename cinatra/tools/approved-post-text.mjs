@@ -33,6 +33,17 @@
  *   - names an artifact other than the one under review.
  * A stopped run never reaches the publish card and never writes to the site.
  *
+ * THE PAGE'S TITLE. The draft writer files the post's title as the artifact's
+ * own title and its body from the first `## ` section on, without the title
+ * as a heading. So the module also takes the post's record, as the flow's
+ * record read after the review hands it on (JSON text of the record
+ * `artifacts_get` answered), and answers the title: the record's own title,
+ * or, when the record has none, a leading `# ` heading of the approved words.
+ * A `## ` section heading is never a title. With neither, the title is empty
+ * and the publishing step publishes nothing. The words are answered as they
+ * were read, unchanged. The publish card shows the title and the words, so
+ * everything that goes out is on the card.
+ *
  * A FAILURE IS NOT A REFUSAL. An error of the content read (an artifact this
  * run cannot see, a revision that does not resolve, a store fault) is thrown
  * on as it is, so the host answers it as the failure it is.
@@ -121,13 +132,35 @@ function approvedTargetOf(answer) {
   return { artifactId: target.artifactId, representationRevisionId: target.representationRevisionId };
 }
 
+/** The record's own title, when the record is the approved artifact's. */
+function recordTitleOf(raw, artifactId) {
+  if (!isNonBlankString(raw)) return "";
+  let record;
+  try {
+    record = JSON.parse(raw);
+  } catch {
+    return "";
+  }
+  if (!isPlainObject(record) || record.artifactId !== artifactId) return "";
+  return isNonBlankString(record.title) ? record.title.trim() : "";
+}
+
+/** A leading `# ` heading of the words: the first line that is not blank, and
+ *  only a level-one heading. A `## ` section heading is never a title. */
+function leadingTitleHeadingOf(text) {
+  const first = text.split(/\r?\n/).find((line) => line.trim() !== "");
+  const match = first === undefined ? null : /^ {0,3}#[ \t]+(.*?)[ \t]*#*[ \t]*$/.exec(first);
+  return match ? match[1].trim() : "";
+}
+
 /**
  * THE ONE CALLABLE EXPORT the declared-tools contract pins: one function of one
  * argument, `{ input, ports }`.
- * Input: `{ reviewDecision, artifactId }`: the review's answer as JSON text and
- * the artifact the run put under review.
- * Result: `{ artifactId, representationRevisionId, text, truncated }`: the
- * approved revision and its words.
+ * Input: `{ reviewDecision, artifactId, postRecord }`: the review's answer as
+ * JSON text, the artifact the run put under review, and the post's record as
+ * JSON text.
+ * Result: `{ artifactId, representationRevisionId, text, truncated, title }`:
+ * the approved revision, its words and the page's title.
  */
 export async function extensionTool({ input, ports }) {
   const call = isPlainObject(input) ? input : {};
@@ -153,5 +186,6 @@ export async function extensionTool({ input, ports }) {
     representationRevisionId: approved.representationRevisionId,
     text: read.text,
     truncated: read.truncated === true,
+    title: recordTitleOf(call.postRecord, approved.artifactId) || leadingTitleHeadingOf(read.text),
   };
 }
