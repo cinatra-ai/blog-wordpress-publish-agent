@@ -140,8 +140,9 @@ test("the publishing step declares the rows the card shows, in the form the comp
   expect(carriersOf("publishRows"), "only the publishing step carries rows").toEqual(["publish"]);
 });
 
-test("the card shows the words that go out, never an internal identifier", () => {
+test("the card shows the title and the words that go out, never an internal identifier", () => {
   expect(cinatraOf(node("publish")).publishRows).toEqual([
+    { label: "Title", input: "postTitle" },
     { label: "Post text", input: "postText" },
   ]);
 });
@@ -233,12 +234,12 @@ test("the cut-short-read branch keeps the approval the card gave", () => {
   ).toEqual(["true"]);
 });
 
-test("the no-heading branch keeps the approval the card gave and publishes nothing", () => {
-  const section = sectionOf(/When `postText` carries no heading line/);
-  expect(section, "the prompt has a no-heading branch").toBeDefined();
+test("the no-title branch keeps the approval the card gave and publishes nothing", () => {
+  const section = sectionOf(/When `postTitle` is empty/);
+  expect(section, "the prompt has a no-title branch").toBeDefined();
   expect(
     approvedIn(section),
-    "the no-heading branch returns approved: true after the card approved",
+    "the no-title branch returns approved: true after the card approved",
   ).toEqual(["true"]);
   expect(section).toMatch(/Publish nothing/);
   expect(section).toMatch(/the failure envelope of Step 4/);
