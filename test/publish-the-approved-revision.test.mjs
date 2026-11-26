@@ -97,14 +97,20 @@ async function declaredTool(name) {
  *   - `calls`: every host tool every step called, in order, with its step;
  *   - the inputs the publishing step is given (what the card shows and what
  *     goes out), or the refusal that stopped the run and the step it stopped at.
+ *   - `recordOutcomes`: for each record read, in order, the step that made it
+ *     and whether the read answered (`ok: true`) or failed (`ok: false`);
+ *   - `failure`: the error a failed record read threw, with the run stopped at
+ *     that step (`stoppedAt`); null otherwise.
  * `record` answers the record read: by default the record of the artifact it
  * was asked for, with `recordTitle`; a function is called with the artifact id
+ * and the step that makes the read (GATHER before the review, RECORD after it)
  * and may throw, as a failed read does.
  */
 async function runToThePublishCard({ reviewDecision, recordTitle = "The post's own title", words = WORDS, record }) {
   const reads = [];
   const calls = [];
   const steps = [];
+  const recordOutcomes = [];
   const answerRecord =
     record ?? ((artifactId) => ({ artifactId, title: recordTitle, objectType: "@cinatra-ai/blog-post-artifact:post" }));
   const contentReadOf = (step) => async ({ artifactId, representationRevisionId }) => {
@@ -141,7 +147,7 @@ async function runToThePublishCard({ reviewDecision, recordTitle = "The post's o
     const inputs = inputsOf(id);
     if (id === PUBLISH) {
       const card = Object.fromEntries((step.metadata.cinatra.publishRows ?? []).map((r) => [r.label, inputs[r.input]]));
-      return { steps, reads, calls, publishInputs: inputs, card, refusal: null, stoppedAt: null };
+      return { steps, reads, calls, recordOutcomes, publishInputs: inputs, card, refusal: null, failure: null, stoppedAt: null };
     }
     if (step.component_type === "InputMessageNode") {
       outputs[id] = { [step.outputs[0].title]: reviewDecision };
@@ -153,7 +159,14 @@ async function runToThePublishCard({ reviewDecision, recordTitle = "The post's o
       // The record read is a read whether or not the host echoes the call's
       // input back (result_input_passthrough): both are recorded.
       reads.push({ step: id, read: "artifacts_get", artifactId: data.input.artifactId });
-      const answer = answerRecord(data.input.artifactId);
+      let answer;
+      try {
+        answer = answerRecord(data.input.artifactId, id);
+        recordOutcomes.push({ step: id, ok: true });
+      } catch (e) {
+        recordOutcomes.push({ step: id, ok: false });
+        return { steps, reads, calls, recordOutcomes, publishInputs: null, card: null, refusal: null, failure: e, stoppedAt: id };
+      }
       outputs[id] = data.result_input_passthrough === true ? { ...data.input } : { artifact: answer };
     } else if (data.tool === "artifact_content_read") {
       outputs[id] = await contentReadOf(id)(data.input);
@@ -163,7 +176,7 @@ async function runToThePublishCard({ reviewDecision, recordTitle = "The post's o
         outputs[id] = await run({ input: data.input.input, ports: { artifacts: { contentRead: contentReadOf(id) } } });
       } catch (e) {
         if (e?.name !== "ExtensionToolCallRefusal") throw e;
-        return { steps, reads, calls, publishInputs: null, card: null, refusal: e.message, stoppedAt: id };
+        return { steps, reads, calls, recordOutcomes, publishInputs: null, card: null, refusal: e.message, failure: null, stoppedAt: id };
       }
     } else {
       throw new Error(`the run reached ${id} before the publishing step`);
@@ -538,28 +551,108 @@ test.each(NO_APPROVED_REVISION)(
   },
 );
 
-test("after a valid approval, a failed record read stops the run before the content read and the card (red: the run reads the words or opens the card)", async () => {
-  const fault = new Error("artifacts_get: the artifact is not one this run's organisation can see");
-  await expect(
-    runToThePublishCard({
-      reviewDecision: approval([{ artifactId: ARTIFACT, representationRevisionId: SUCCESSOR }]),
-      record: () => {
-        throw fault;
-      },
-    }),
-  ).rejects.toBe(fault);
+// The record is read twice: BEFORE the review by gather_review_target (it builds
+// the target set; the answer is not used afterwards) and AFTER the approval by
+// read_post_record (it feeds the title). These cases let the first read answer
+// and make only the second one fail or answer something unusable, so they reach
+// the post-review step the name says.
+const APPROVED_SUCCESSOR = approval([{ artifactId: ARTIFACT, representationRevisionId: SUCCESSOR }]);
+const RECORD_REFUSAL =
+  "The post's record could not be read after the review, so nothing is published; start the run again.";
+const ownRecord = (artifactId) => ({ artifactId, title: "The post's own title", objectType: "@cinatra-ai/blog-post-artifact:post" });
 
-  const unreadable = await runToThePublishCard({
-    reviewDecision: approval([{ artifactId: ARTIFACT, representationRevisionId: SUCCESSOR }]),
-    record: () => null,
+test("after a valid approval, a record read that FAILS after the review (the pre-review read answered) stops the run as a failure before the content read and the card (red: the run reads the words or opens the card, or the failure is swallowed)", async () => {
+  const fault = new Error("artifacts_get: the artifact is not one this run's organisation can see");
+  const run = await runToThePublishCard({
+    reviewDecision: APPROVED_SUCCESSOR,
+    record: (artifactId, step) => {
+      if (step === GATHER) return ownRecord(artifactId);
+      throw fault;
+    },
   });
-  expect(unreadable.reads).toEqual([PRE_REVIEW_READ, { step: RECORD, read: "artifacts_get", artifactId: ARTIFACT }]);
-  expect(unreadable.card).toBeNull();
-  expect(unreadable.publishInputs).toBeNull();
-  expect(unreadable.stoppedAt).toBe(READ);
-  expect(unreadable.refusal).toBe(
-    "The post's record could not be read after the review, so nothing is published; start the run again.",
-  );
+  expect(run.steps, "the run went through the review and the check to the post-review record read").toEqual([
+    GATHER,
+    REVIEW,
+    CHECK,
+    RECORD,
+  ]);
+  expect(run.recordOutcomes, "the pre-review read answered; the post-review read was made and failed").toEqual([
+    { step: GATHER, ok: true },
+    { step: RECORD, ok: false },
+  ]);
+  expect(run.reads, "the record before the review, the record after it (attempted), no content read").toEqual([
+    PRE_REVIEW_READ,
+    { step: RECORD, read: "artifacts_get", artifactId: ARTIFACT },
+  ]);
+  expect(run.calls).toEqual([
+    { step: GATHER, tool: "artifacts_get" },
+    { step: CHECK, tool: "extension_tool" },
+    { step: RECORD, tool: "artifacts_get" },
+  ]);
+  expect(run.steps).not.toContain(READ);
+  expect(run.steps).not.toContain(PUBLISH);
+  expect(run.steps).not.toContain(WRITE);
+  expect(run.calls.filter((c) => c.tool === "objects_update")).toEqual([]);
+  // The run ends with the host's own error, thrown on as a failure: no refusal
+  // text of the pack, no card, nothing published.
+  expect(run.failure).toBe(fault);
+  expect(run.failure.message).toBe("artifacts_get: the artifact is not one this run's organisation can see");
+  expect(run.refusal).toBeNull();
+  expect(run.stoppedAt).toBe(RECORD);
+  expect(run.card).toBeNull();
+  expect(run.publishInputs).toBeNull();
+});
+
+test.each([
+  ["nothing (null)", () => null],
+  ["text that is not JSON", () => "not json"],
+  ["a list", (artifactId) => [ownRecord(artifactId)]],
+  ["the record of another artifact", () => ownRecord("art-other")],
+])(
+  "after a valid approval, a post-review record read that answers %s (the pre-review read answered normally) stops the run with the pack's refusal at the read step, before the content read and the card (red: the run goes on without the record)",
+  async (_, unusable) => {
+    const run = await runToThePublishCard({
+      reviewDecision: APPROVED_SUCCESSOR,
+      record: (artifactId, step) => (step === GATHER ? ownRecord(artifactId) : unusable(artifactId)),
+    });
+    expect(run.steps, "through the review, the check and the post-review record read, to the read step").toEqual([
+      GATHER,
+      REVIEW,
+      CHECK,
+      RECORD,
+      READ,
+    ]);
+    expect(run.recordOutcomes, "both record reads answered; the second answer is the unusable one").toEqual([
+      { step: GATHER, ok: true },
+      { step: RECORD, ok: true },
+    ]);
+    expect(run.reads, "the record before the review, the record after it, no content read").toEqual([
+      PRE_REVIEW_READ,
+      { step: RECORD, read: "artifacts_get", artifactId: ARTIFACT },
+    ]);
+    expect(run.steps).not.toContain(PUBLISH);
+    expect(run.steps).not.toContain(WRITE);
+    expect(run.calls.filter((c) => c.tool === "objects_update")).toEqual([]);
+    expect(run.stoppedAt).toBe(READ);
+    expect(run.failure).toBeNull();
+    expect(run.card).toBeNull();
+    expect(run.publishInputs).toBeNull();
+    expect(run.refusal).toBe(RECORD_REFUSAL);
+  },
+);
+
+test("a record read that fails BEFORE the review stops the run at the pre-review step: no review, no later step", async () => {
+  const fault = new Error("artifacts_get: down");
+  const run = await runToThePublishCard({
+    reviewDecision: APPROVED_SUCCESSOR,
+    record: () => {
+      throw fault;
+    },
+  });
+  expect(run.steps).toEqual([GATHER]);
+  expect(run.recordOutcomes).toEqual([{ step: GATHER, ok: false }]);
+  expect(run.failure).toBe(fault);
+  expect(run.stoppedAt).toBe(GATHER);
 });
 
 test("the check alone reads nothing and answers the approved revision", async () => {
