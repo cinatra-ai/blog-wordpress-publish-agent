@@ -1,7 +1,7 @@
 /**
  * THE WORDS OF THE REVISION THE REVIEW APPROVED, as the tool this pack DECLARES.
  *
- * The run parks on the host's artifact review of the post before anything is
+ * The run parks on the host's artifact review of the post before its words are
  * read for publishing. The person can approve the revision the run started
  * with, or choose Regenerate and then approve the successor revision that the
  * Regenerate made. The host resumes the review step with its answer as JSON
@@ -24,13 +24,16 @@
  * (`ports.artifacts.contentRead`), admitted by the artifact dependency this
  * pack declares.
  *
- * NOTHING WITHOUT AN APPROVAL, AND NOTHING READ BEFORE IT. The flow calls this
- * module twice. Its first step after the review (`checkOnly: true`) only checks
- * the answer and hands on the approved target; it reads nothing. Only behind
- * that step does the flow read the post's record, and only then does the read
- * step call this module again for the words. So a review that was not an
- * approval reads neither the record nor the words. Both calls stop the run
- * with one sentence a person can read, before any read, when the answer
+ * NOTHING WITHOUT AN APPROVAL, AND NOTHING MORE READ AFTER A REFUSED REVIEW.
+ * The step in front of the review reads the post's record once, on purpose: it
+ * builds the target set the person reviews. The flow calls this module twice
+ * after the review. Its first step after the review (`checkOnly: true`) only
+ * checks the answer and hands on the approved target; it reads nothing. Only
+ * behind that step does the flow read the post's record again, and only then
+ * does the read step call this module again for the words. So after a review
+ * that was not an approval nothing more is read: no second record read, no
+ * content read. Both calls stop the run with one sentence a person can read,
+ * before their own read, when the answer
  *   - is not JSON text of an object,
  *   - does not carry the approval (`approved: true` and `review.decision`
  *     "approved", envelope version 1),
@@ -43,23 +46,32 @@
  * as a heading. So the module also takes the post's record, as the flow's
  * record read after the check hands it on (JSON text of the record
  * `artifacts_get` answered), and answers the title: the record's own title,
- * with the spaces around it removed, or, when the record has none (no title,
- * or one of spaces only), a leading `# ` heading of the approved words. A
+ * with the white space around it removed, or, when the record has none (no
+ * title, or one of white space only), a leading `# ` heading of the approved
+ * words. The record's title is plain text, not Markdown, so "white space" there
+ * is every character JavaScript's `String.prototype.trim` removes (Unicode
+ * white space such as U+00A0 and U+3000, U+FEFF, and line ends): a title of
+ * U+00A0 only is no title. A
  * record that is not the approved artifact's record (none, not an object,
  * another artifact) stops the run, before the content read, with a sentence
  * that says nothing is published. The record's title wins over a `# ` heading
  * of the words; the heading then stays in the words, which go out unchanged,
  * so the page shows it in its body under the title. The title is not cut to a
- * length. With no title, the title is empty and the publishing step publishes
- * nothing. The publish card shows the title and the words, so everything that
+ * length. A title, from either source, that consists only of such white space
+ * shows nothing on the card, so it is no title. With no title, the title is
+ * empty and the publishing step publishes nothing. The publish card shows the title and the words, so everything that
  * goes out is on the card.
  *
  * THE `# ` HEADING follows the CommonMark rule for an ATX heading of level one:
- * the first line that is not blank, indented by at most three spaces, is `#`
- * followed by a space, a tab or the end of the line (`#C` is not a heading).
- * An optional closing run of `#` is removed only when a space or a tab comes
- * before it and only spaces or tabs come after it, so `# C#` is "C#" and
- * `# C #` is "C". A backslash before an ASCII punctuation character makes it
+ * the first line that is not blank (a blank line holds nothing but spaces
+ * U+0020 and tabs U+0009), indented by at most three spaces (spaces only), is
+ * `#` followed by a space, a tab or the end of the line (`#C` is not a
+ * heading). An optional closing run of `#` is removed only when a space or a
+ * tab comes before it and only spaces or tabs come after it, so `# C#` is "C#"
+ * and `# C #` is "C"; spaces and tabs around the content are removed. Every
+ * other character, Unicode white space included (U+00A0, U+2003, U+3000,
+ * U+FEFF, U+000B, U+000C), is content: it makes a line not blank, it is no
+ * indent and no separator after `#`, and it is not removed. A backslash before an ASCII punctuation character makes it
  * plain (`# C \#` is "C #"), except inside a code span. A `## ` section
  * heading, or any other level, is never a title.
  *
@@ -169,10 +181,14 @@ function recordOf(raw, artifactId) {
   return record;
 }
 
-/** The record's own title without the spaces around it; "" for none. */
+/** The record's own title without the white space around it (plain text,
+ *  so `trim`'s Unicode white space); "" for none or white space only. */
 function recordTitleOf(record) {
-  return isNonBlankString(record.title) ? record.title.trim() : "";
+  return typeof record.title === "string" ? record.title.trim() : "";
 }
+
+/** A line CommonMark calls blank: nothing but spaces and tabs. */
+const BLANK_LINE = /^[ \t]*$/;
 
 /** ASCII punctuation, the characters a backslash makes plain (CommonMark 2.4). */
 const ESCAPABLE = /[!-\/:-@[-`{-~]/;
@@ -209,11 +225,19 @@ function withoutEscapes(text) {
 /** A leading level-one ATX heading of the words (the first line that is not
  *  blank), by the CommonMark rule; "" when that line is no such heading. */
 function leadingTitleHeadingOf(text) {
-  const first = text.split(/\r\n|\r|\n/).find((line) => line.trim() !== "");
-  const match = first === undefined ? null : /^ {0,3}#(?:[ \t](.*))?$/.exec(first);
+  // CommonMark's line endings are LF, CR LF and CR; any other character
+  // (U+2028 included) stays in its line as content, which the `s` flag keeps.
+  const first = text.split(/\r\n|\r|\n/).find((line) => !BLANK_LINE.test(line));
+  const match = first === undefined ? null : /^ {0,3}#(?:[ \t](.*))?$/s.exec(first);
   if (!match) return "";
   const content = (match[1] ?? "").replace(/(?:^|[ \t])#+[ \t]*$/, "");
   return withoutEscapes(content.replace(/^[ \t]+|[ \t]+$/g, ""));
+}
+
+/** The page's title; "" when it shows nothing (white space only, as `trim`
+ *  reads it): such a title is no title, so nothing is published. */
+function pageTitleOf(title) {
+  return title.trim() === "" ? "" : title;
 }
 
 /**
@@ -253,6 +277,6 @@ export async function extensionTool({ input, ports }) {
     representationRevisionId: approved.representationRevisionId,
     text: read.text,
     truncated: read.truncated === true,
-    title: recordTitleOf(record) || leadingTitleHeadingOf(read.text),
+    title: pageTitleOf(recordTitleOf(record) || leadingTitleHeadingOf(read.text)),
   };
 }
