@@ -35,6 +35,7 @@ const REVIEW = "review_post";
 const CHECK = "check_review";
 const RECORD = "read_post_record";
 const READ = "read_post_text";
+const HTML_STEP = "write_post_html";
 const PUBLISH = "publish";
 const WRITE = "write_address";
 
@@ -47,6 +48,14 @@ const WORDS = {
 };
 
 const refOf = (r) => r?.$component_ref;
+
+/**
+ * A stand-in for the HTML step's model answer: a value built from the words the
+ * step is given, so a case can tell that the card's HTML row and the publishing
+ * step's body are the answer of that step, for those words. The conversion
+ * itself is the skill's (blog-post-html); this suite does not run a model.
+ */
+const HTML_OF = (words) => `<p data-stand-in>${words}</p>`;
 
 /** The review's answer for an approval of `targets`, as the host builds it. */
 const approval = (targets, comment = null) =>
@@ -153,6 +162,13 @@ async function runToThePublishCard({ reviewDecision, recordTitle = "The post's o
       outputs[id] = { [step.outputs[0].title]: reviewDecision };
       continue;
     }
+    if (id === HTML_STEP) {
+      // The HTML step is a model step that calls no host tool; its answer is
+      // the stand-in above, built from the words it is given.
+      expect(Object.keys(inputs), "the HTML step is given the approved words only").toEqual(["postText"]);
+      outputs[id] = { postHtml: HTML_OF(inputs.postText) };
+      continue;
+    }
     const data = fill(step.data, inputs);
     calls.push({ step: id, tool: data.tool });
     if (data.tool === "artifacts_get") {
@@ -216,12 +232,14 @@ test("after Regenerate and an approval of the successor, the read, the card's Po
     reviewDecision: approval([{ artifactId: ARTIFACT, representationRevisionId: SUCCESSOR }]),
   });
   expect(run.refusal).toBeNull();
-  expect(run.steps).toEqual([GATHER, REVIEW, CHECK, RECORD, READ, PUBLISH]);
+  expect(run.steps).toEqual([GATHER, REVIEW, CHECK, RECORD, READ, HTML_STEP, PUBLISH]);
   expect(run.reads, "the record before the review, then after the approval the record and the words, each once").toEqual(
     APPROVED_READS(SUCCESSOR),
   );
   expect(run.card["Post text"]).toBe(WORDS[SUCCESSOR]);
   expect(run.publishInputs.postText).toBe(WORDS[SUCCESSOR]);
+  expect(run.card["Post HTML"], "the card's HTML row is the HTML of the successor's words").toBe(HTML_OF(WORDS[SUCCESSOR]));
+  expect(run.publishInputs.postHtml, "the body that goes out is the value the card shows").toBe(run.card["Post HTML"]);
   expect(run.publishInputs.postArtifactId).toBe(ARTIFACT);
   expect(run.publishInputs.postRepresentationRevisionId, "the address patch names the revision that went out").toBe(
     SUCCESSOR,
@@ -237,6 +255,8 @@ test("an approval of the revision the run started with publishes that revision, 
   expect(run.reads).toEqual(APPROVED_READS(ORIGINAL));
   expect(run.card["Post text"]).toBe(WORDS[ORIGINAL]);
   expect(run.publishInputs.postText).toBe(WORDS[ORIGINAL]);
+  expect(run.card["Post HTML"]).toBe(HTML_OF(WORDS[ORIGINAL]));
+  expect(run.publishInputs.postHtml).toBe(HTML_OF(WORDS[ORIGINAL]));
   expect(run.publishInputs.postRepresentationRevisionId).toBe(ORIGINAL);
 
   const intoRead = oas.data_flow_connections
@@ -681,9 +701,11 @@ test("the publishing step and the write-back take the approved artifact and revi
   expect(into(PUBLISH, "postText")).toEqual([`${READ}.text`]);
   expect(into(PUBLISH, "truncated")).toEqual([`${READ}.truncated`]);
   expect(into(PUBLISH, "postTitle")).toEqual([`${READ}.title`]);
+  expect(into(PUBLISH, "postHtml"), "the body is the HTML step's answer").toEqual([`${HTML_STEP}.postHtml`]);
+  expect(into(HTML_STEP, "postText"), "the HTML step writes the approved words").toEqual([`${READ}.text`]);
   expect(writeTargetSource()).toEqual([`${READ}.artifactId`]);
   const cardInputs = (node(PUBLISH).metadata.cinatra.publishRows ?? []).map((r) => r.input);
-  expect(cardInputs).toEqual(["postTitle", "postText"]);
+  expect(cardInputs).toEqual(["postTitle", "postText", "postHtml"]);
 });
 
 test("the read is the module this pack declares, shipped in the package, and its refusals fit the host's bounds", async () => {

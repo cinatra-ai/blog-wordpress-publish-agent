@@ -64,10 +64,11 @@ const REVIEW = "review_post";
 const CHECK_REVIEW = "check_review";
 const READ_RECORD = "read_post_record";
 const READ_TEXT = "read_post_text";
+const WRITE_HTML = "write_post_html";
 const PUBLISH = "publish";
 const WRITE_BACK = "write_address";
 const END = "end";
-const CHAIN = [START, GATHER_REVIEW, REVIEW, CHECK_REVIEW, READ_RECORD, READ_TEXT, PUBLISH, WRITE_BACK, END];
+const CHAIN = [START, GATHER_REVIEW, REVIEW, CHECK_REVIEW, READ_RECORD, READ_TEXT, WRITE_HTML, PUBLISH, WRITE_BACK, END];
 
 // The tools of the WordPress connector the publish step names, and no other step.
 const SITE_TOOLS = ["wordpress_site_tool_write", "wordpress_site_tools_list"];
@@ -147,10 +148,14 @@ test("the flow is the one chain of steps this suite names, with no branch and no
   expect(steps[END].component_type).toBe("EndNode");
 });
 
-test("the publish step is the only model step and is reached only from the read of the pinned words (red: a second way into the publish step, or a second model step)", () => {
-  expect(into(PUBLISH).map((e) => e.from)).toEqual([READ_TEXT]);
+test("the publish step is reached only from the HTML step, which is reached only from the read of the pinned words; the two are the only model steps, and only the publish step writes (red: a second way into the publish step, a third model step, or a writing HTML step)", () => {
+  expect(into(PUBLISH).map((e) => e.from)).toEqual([WRITE_HTML]);
+  expect(into(WRITE_HTML).map((e) => e.from)).toEqual([READ_TEXT]);
+  expect(outOf(WRITE_HTML).map((e) => e.to)).toEqual([PUBLISH]);
   expect(outOf(PUBLISH).map((e) => e.to)).toEqual([WRITE_BACK]);
-  expect(apiSteps().filter(([, c]) => isModelStep(c)).map(([id]) => id)).toEqual([PUBLISH]);
+  expect(apiSteps().filter(([, c]) => isModelStep(c)).map(([id]) => id).sort()).toEqual([PUBLISH, WRITE_HTML].sort());
+  expect(steps[WRITE_HTML].metadata?.cinatra?.riskClass).toBe("read_only");
+  expect(steps[WRITE_HTML].metadata?.cinatra?.publishes).toBe(false);
   expect(publish.component_type).toBe("ApiNode");
   expect(publish.metadata?.cinatra?.riskClass).toBe("write");
 });
@@ -199,7 +204,7 @@ test("the person's decision stands in front of the page, held by the application
     // card; the recipe asks nothing and the pack names no screen of its own.
     expect(Array.isArray(cinatra.publishRows)).toBe(true);
     expect(cinatra.publishRows.length).toBeGreaterThanOrEqual(1);
-    expect(cinatra.publishRows.length).toBeLessThanOrEqual(2);
+    expect(cinatra.publishRows.length).toBeLessThanOrEqual(4);
     expect(recipe()).not.toMatch(/INTERRUPT/);
     expect(hitl ?? []).toEqual([]);
     return;
