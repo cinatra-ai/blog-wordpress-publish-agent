@@ -1,6 +1,6 @@
 {
   "name": "@cinatra-ai/blog-wordpress-publish-agent",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "license": "Apache-2.0",
   "description": "Publishes the blog post ARTIFACT revision a person continued with to a connected WordPress site and writes the site's address back onto that artifact. Takes an artifact reference (postArtifactId + postRepresentationRevisionId), opens a review of that revision first, publishes the revision that review approved (that revision, or the successor a Regenerate made), then waits for the person's decision on the application's own publish card, which opens only after that review is approved, before anything reaches the site, creates the page through the WordPress connector's own site catalogue, and merges the address onto the artifact's data. Returns a receipt, never a new artifact.",
   "type": "module",

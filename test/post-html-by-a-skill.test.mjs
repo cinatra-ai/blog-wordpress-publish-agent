@@ -110,10 +110,9 @@ test("the HTML step takes the approved words and answers postHtml, and its promp
   expect(s.data.system).toMatch(/never change, add, remove or reorder a word of `postText`/);
 });
 
-test("the card shows the HTML in its own row, bound to postHtml, beside the title and the approved words (red: no HTML row, or a row bound to another input)", () => {
+test("the card shows the HTML in its own row, bound to postHtml, beside the title (red: no HTML row, or a row bound to another input)", () => {
   expect(node(PUBLISH).metadata.cinatra.publishRows).toEqual([
     { label: "Title", input: "postTitle" },
-    { label: "Post text", input: "postText" },
     { label: "Post HTML", input: "postHtml" },
   ]);
   expect(into(PUBLISH, "postHtml")).toEqual([`${HTML_STEP}.postHtml`]);
@@ -124,11 +123,12 @@ test("the publish step sends postHtml unchanged as the page's body, and its prom
   expect(titles(publish.inputs)).toContain("postHtml");
   const system = publish.data.system;
   expect(system).toMatch(/This is the ONLY body you publish, and you send it unchanged\./);
-  expect(system).toMatch(/You do not send them: the body is `postHtml`\./);
   expect(system).toMatch(/carrying postTitle as the title, postHtml unchanged as the body/);
   expect(system).not.toMatch(/postText as the body/);
   expect(system).toMatch(/you convert nothing yourself/);
   expect(system).toMatch(/When `postHtml` is empty[^]*?Publish nothing/);
-  expect(system).toMatch(/Never send `postText` in its place/);
+  expect(system).toMatch(/Never write HTML of your own\./);
+  expect(system).not.toMatch(/postText/);
+  expect(publish.data.user).not.toMatch(/postText/);
   expect(publish.data.user).toMatch(/- postHtml: \{\{ postHtml \}\}/);
 });

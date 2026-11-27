@@ -84,21 +84,17 @@ test("the read is admitted by a declared artifact dependency", () => {
   }
 });
 
-test("the body the orchestration publishes is that read, not text of its own", () => {
+test("the body the orchestration publishes is the HTML made from that read, not text of its own", () => {
   const edges = oas.data_flow_connections;
-  const fed = edges.find(
-    (e) =>
-      e.source_node.$component_ref === "read_post_text" &&
-      e.source_output === "text" &&
-      e.destination_node.$component_ref === "publish",
-  );
-  expect(
-    fed,
-    "the pinned revision's text feeds the orchestration node",
-  ).toBeTruthy();
+  const into = (node, input) =>
+    edges
+      .filter((e) => e.destination_node.$component_ref === node && e.destination_input === input)
+      .map((e) => `${e.source_node.$component_ref}.${e.source_output}`);
+  expect(into("write_post_html", "postText"), "the pinned revision's text feeds the HTML step").toEqual(["read_post_text.text"]);
+  expect(into("publish", "postHtml"), "the HTML step's answer feeds the orchestration node").toEqual(["write_post_html.postHtml"]);
   const system = bridgeNode().data.system;
-  expect(system, "the recipe forbids publishing anything but the pinned bytes").toMatch(
-    /You do NOT re-word, re-generate, summarise or extend `postText`/,
+  expect(system, "the recipe forbids publishing anything but the HTML it is given").toMatch(
+    /You do NOT re-word, re-generate, summarise or extend `postHtml`/,
   );
 });
 
@@ -332,18 +328,18 @@ test("the page's title is the title the read step answers, shown in its own row 
 
   // One source for the title, and it is a row of the card.
   expect(recipe).toMatch(/The page's title is `postTitle`, exactly as given/);
-  expect(recipe).toMatch(/never take one from a section heading of `postText`/);
+  expect(recipe).toMatch(/never take one from a section heading inside `postHtml`/);
   expect(recipe).not.toMatch(/first heading/);
   expect(cardInputs, "the card shows the title").toContain("postTitle");
-  expect(cardInputs, "the card shows the words").toContain("postText");
+  expect(cardInputs, "the card shows no copy of the words").not.toContain("postText");
   expect(
     dataEdge("read_post_text", "title", "publish", "postTitle"),
     "the shown title is the read step's answer, the same value the step sends",
   ).toBeTruthy();
   expect(
     dataEdge("read_post_text", "text", "publish", "postText"),
-    "the shown words are the pinned read",
-  ).toBeTruthy();
+    "the publishing step takes no copy of the words",
+  ).toBeFalsy();
   expect(cardInputs, "the card shows the HTML").toContain("postHtml");
   expect(
     dataEdge("write_post_html", "postHtml", "publish", "postHtml"),
@@ -357,7 +353,7 @@ test("the page's title is the title the read step answers, shown in its own row 
   expect(recipe).not.toMatch(/postArtifact\b(?!Id)/);
   expect(publish.data.user).not.toMatch(/postArtifact\b(?!Id)/);
   expect(titles(publish.inputs).sort()).toEqual(
-    ["instanceId", "postArtifactId", "postHtml", "postRepresentationRevisionId", "postText", "postTitle", "truncated"].sort(),
+    ["instanceId", "postArtifactId", "postHtml", "postRepresentationRevisionId", "postTitle", "truncated"].sort(),
   );
   const contentInputs = titles(publish.inputs).filter(
     (t) => !["instanceId", "postArtifactId", "postRepresentationRevisionId", "truncated"].includes(t),
