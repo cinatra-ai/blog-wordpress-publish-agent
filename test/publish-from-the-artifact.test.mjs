@@ -367,18 +367,24 @@ test("the page's title is the title the read step answers, shown in its own row 
   );
 });
 
-test("the record read after the review reaches only the read step, never the publishing step (red: a record feeding the publish)", () => {
+test("the record read in front of the review reaches only the read step, never the publishing step; after the review the flow reads nothing but the words (red: a record feeding the publish, or a record read behind the review)", () => {
   const refOf = (r) => r?.$component_ref;
   const edges = (oas.control_flow_connections ?? []).map((e) => [refOf(e.from_node), refOf(e.to_node)]);
-  const after = new Set();
-  const queue = ["review_post"];
-  while (queue.length > 0) {
-    const id = queue.shift();
-    for (const [from, to] of edges) if (from === id && !after.has(to)) (after.add(to), queue.push(to));
-  }
+  const reachFrom = (first) => {
+    const seen = new Set();
+    const queue = [first];
+    while (queue.length > 0) {
+      const id = queue.shift();
+      for (const [from, to] of edges) if (from === id && !seen.has(to)) (seen.add(to), queue.push(to));
+    }
+    return seen;
+  };
+  const after = reachFrom("review_post");
   expect(after.has("publish"), "the publish step follows the review").toBe(true);
-  const recordReads = [...after].filter((id) => node(id)?.data?.tool === "artifacts_get");
-  expect(recordReads).toEqual(["read_post_record"]);
+  // Every artifacts_get of the flow is in front of the review: none is behind it.
+  expect([...after].filter((id) => node(id)?.data?.tool === "artifacts_get"), "no record read behind the review").toEqual([]);
+  expect(reachFrom("start").has("read_post_record")).toBe(true);
+  expect(after.has("read_post_record"), "the record read is not behind the review").toBe(false);
   const fromRecord = (oas.data_flow_connections ?? [])
     .filter((e) => refOf(e.source_node) === "read_post_record")
     .map((e) => `${refOf(e.destination_node)}.${e.destination_input}`);

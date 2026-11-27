@@ -61,14 +61,13 @@ const outOf = (id) => edges.filter((e) => e.from === id);
 const START = "start";
 const GATHER_REVIEW = "gather_review_target";
 const REVIEW = "review_post";
-const CHECK_REVIEW = "check_review";
 const READ_RECORD = "read_post_record";
 const READ_TEXT = "read_post_text";
 const WRITE_HTML = "write_post_html";
 const PUBLISH = "publish";
 const WRITE_BACK = "write_address";
 const END = "end";
-const CHAIN = [START, GATHER_REVIEW, REVIEW, CHECK_REVIEW, READ_RECORD, READ_TEXT, WRITE_HTML, PUBLISH, WRITE_BACK, END];
+const CHAIN = [START, GATHER_REVIEW, READ_RECORD, REVIEW, READ_TEXT, WRITE_HTML, PUBLISH, WRITE_BACK, END];
 
 // The tools of the WordPress connector the publish step names, and no other step.
 const SITE_TOOLS = ["wordpress_site_tool_write", "wordpress_site_tools_list"];
@@ -176,17 +175,21 @@ test("the steps around the publish step are the host's own reads, the read of th
   );
   expect(tools).toEqual({
     [GATHER_REVIEW]: "artifacts_get",
-    [CHECK_REVIEW]: "extension_tool",
     [READ_RECORD]: "artifacts_get",
     [READ_TEXT]: "extension_tool",
     [WRITE_BACK]: "objects_update",
   });
-  for (const id of [GATHER_REVIEW, CHECK_REVIEW, READ_RECORD, READ_TEXT]) {
+  for (const id of [GATHER_REVIEW, READ_RECORD, READ_TEXT]) {
     expect(steps[id].metadata.cinatra.riskClass).toBe("read_only");
   }
-  expect(steps[CHECK_REVIEW].data.input.name).toBe("approved_post_text");
-  expect(steps[CHECK_REVIEW].data.input.input.checkOnly, "the check reads nothing").toBe(true);
   expect(steps[READ_TEXT].data.input.name).toBe("approved_post_text");
+  // The read of the words is the flow's one step that runs the pack's code (the
+  // product's recorded list of such steps holds `read_post_text` alone, and it
+  // only shrinks): no second call of the tool, no check-only call.
+  expect(
+    Object.entries(steps).filter(([, c]) => c.data?.tool === "extension_tool").map(([id]) => id),
+    "one step runs the pack's code",
+  ).toEqual([READ_TEXT]);
   expect(Object.hasOwn(steps[READ_TEXT].data.input.input, "checkOnly")).toBe(false);
 });
 

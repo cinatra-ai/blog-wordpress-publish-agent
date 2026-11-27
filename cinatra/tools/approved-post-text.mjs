@@ -24,16 +24,14 @@
  * (`ports.artifacts.contentRead`), admitted by the artifact dependency this
  * pack declares.
  *
- * NOTHING WITHOUT AN APPROVAL, AND NOTHING MORE READ AFTER A REFUSED REVIEW.
- * The step in front of the review reads the post's record once, on purpose: it
- * builds the target set the person reviews. The flow calls this module twice
- * after the review. Its first step after the review (`checkOnly: true`) only
- * checks the answer and hands on the approved target; it reads nothing. Only
- * behind that step does the flow read the post's record again, and only then
- * does the read step call this module again for the words. So after a review
- * that was not an approval nothing more is read: no second record read, no
- * content read. Both calls stop the run with one sentence a person can read,
- * before their own read, when the answer
+ * NOTHING WITHOUT AN APPROVAL, AND NOTHING READ AFTER A REFUSED REVIEW. The
+ * flow reads the post's record in front of the review, on purpose, and hands
+ * it on over the pause (`postRecord`). The flow calls this module once, right
+ * behind the review, and the module checks the answer FIRST: before it looks at
+ * the record and before any content read. So after a review that was not an
+ * approval nothing is read at all: no record read, no content read. The module
+ * stops the run with one sentence a person can read, before its own read, when
+ * the answer
  *   - is not JSON text of an object,
  *   - does not carry the approval (`approved: true` and `review.decision`
  *     "approved", envelope version 1),
@@ -44,8 +42,9 @@
  * THE PAGE'S TITLE. The draft writer files the post's title as the artifact's
  * own title and its body from the first `## ` section on, without the title
  * as a heading. So the module also takes the post's record, as the flow's
- * record read after the check hands it on (JSON text of the record
- * `artifacts_get` answered), and answers the title: the record's own title,
+ * record read in front of the review hands it on (JSON text of the record
+ * `artifacts_get` answered; the title that stood when the reviewer decided),
+ * and answers the title: the record's own title,
  * with the white space around it removed, or, when the record has none (no
  * title, or one of white space only), a leading `# ` heading of the approved
  * words. The record's title is plain text, not Markdown, so "white space" there
@@ -79,9 +78,9 @@
  * run cannot see, a revision that does not resolve, a store fault) is thrown
  * on as it is, so the host answers it as the failure it is.
  *
- * THIS FILE IS THE SHIPPED ARTIFACT: `files` ships `cinatra/`. The same file is
- * shipped by blog-wordpress-publish-agent and blog-linkedin-publish-agent,
- * because the host resolves the tool against the pack whose run calls it.
+ * THIS FILE IS THE SHIPPED ARTIFACT: `files` ships `cinatra/`. The host resolves
+ * the tool against the pack whose run calls it, so each pack that declares a
+ * tool of this name ships its own copy.
  */
 
 /** The one envelope version of the review's answer this module reads. */
@@ -96,7 +95,7 @@ const OTHER_ARTIFACT_REASON =
 const NO_ARTIFACT_REASON =
   "The post under review did not reach this step, so nothing is published; start the run again.";
 const NO_RECORD_REASON =
-  "The post's record could not be read after the review, so nothing is published; start the run again.";
+  "The post's record read before the review is not the approved post's, so nothing is published; start the run again.";
 
 /** Every sentence this module can stop a run with, for the checks that hold
  *  each one to the host's bounds. */
@@ -243,20 +242,16 @@ function pageTitleOf(title) {
 /**
  * THE ONE CALLABLE EXPORT the declared-tools contract pins: one function of one
  * argument, `{ input, ports }`.
- * Input: `{ reviewDecision, artifactId, postRecord, checkOnly }`: the review's
- * answer as JSON text, the artifact the run put under review, the post's
- * record as JSON text, and `checkOnly: true` for the check that reads nothing.
- * Result of the check: `{ artifactId, representationRevisionId }`, the
- * approved revision. Result of the read: `{ artifactId,
- * representationRevisionId, text, truncated, title }`: the approved revision,
- * its words and the page's title.
+ * Input: `{ reviewDecision, artifactId, postRecord }`: the review's answer as
+ * JSON text, the artifact the run put under review and the post's record as
+ * JSON text. Result: `{ artifactId, representationRevisionId, text, truncated,
+ * title }`: the approved revision, its words and the page's title.
  */
 export async function extensionTool({ input, ports }) {
   const call = isPlainObject(input) ? input : {};
   if (!isNonBlankString(call.artifactId)) throw new ApprovedRevisionRefusal(NO_ARTIFACT_REASON);
   const approved = approvedTargetOf(answerOf(call.reviewDecision));
   if (approved.artifactId !== call.artifactId) throw new ApprovedRevisionRefusal(OTHER_ARTIFACT_REASON);
-  if (call.checkOnly === true) return approved;
 
   const record = recordOf(call.postRecord, approved.artifactId);
   const read = await ports.artifacts.contentRead({
