@@ -37,11 +37,16 @@ export function passthroughNodes() {
   return out;
 }
 
-/** The single LLM-bridge orchestration node. */
+/**
+ * The LLM-bridge orchestration node: the model step that publishes. The flow has
+ * a second model step, write_post_html, which writes the HTML and publishes
+ * nothing; it is read by its id.
+ */
 export function bridgeNode() {
   for (const [id, c] of Object.entries(components)) {
     if (c?.component_type !== "ApiNode") continue;
-    if (String(c.url ?? "").includes("/api/llm-bridge")) return { id, ...c };
+    if (!String(c.url ?? "").includes("/api/llm-bridge")) continue;
+    if (c?.metadata?.cinatra?.publishes === true) return { id, ...c };
   }
   return null;
 }

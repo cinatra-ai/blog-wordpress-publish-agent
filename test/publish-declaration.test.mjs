@@ -16,7 +16,7 @@
 //     packages/agents/src/oas-compiler.ts, `collectPublishingSteps` and
 //     `collectPublishRows`): `publishes` is the JSON boolean true on a
 //     top-level node of kind ApiNode, AgentNode, FlowNode or ParallelFlowNode;
-//     `publishRows` sits only beside it, as 1 or 2 rows, each an object with
+//     `publishRows` sits only beside it, as 1 to 4 rows, each an object with
 //     exactly the keys `label` and `input`, the label one line of 1 to 60
 //     characters with no space at either end, the input the title of one of
 //     that node's own inputs, and no input shown twice;
@@ -86,12 +86,16 @@ test("the publish step is the one step the application holds, declared as the co
     "the flow root declares no publishes key",
   ).toBe(false);
   expect(carriersOf("publishes").sort(), "the nodes that declare publishes at all").toEqual(
-    ["publish", "write_address"],
+    ["publish", "write_address", "write_post_html"],
   );
 });
 
 test("the address write-back writes but does not publish, and says so", () => {
   expect(cinatraOf(node("write_address")).publishes).toBe(false);
+});
+
+test("the HTML step publishes nothing, and says so", () => {
+  expect(cinatraOf(node("write_post_html")).publishes).toBe(false);
 });
 
 test("every step that can reach a connector declares publishes as a boolean", () => {
@@ -119,7 +123,7 @@ test("the publishing step declares the rows the card shows, in the form the comp
   const publish = node("publish");
   const rows = cinatraOf(publish).publishRows;
   expect(Array.isArray(rows), "publishRows is a list").toBe(true);
-  expect(rows.length >= 1 && rows.length <= 2, "one or two rows").toBe(true);
+  expect(rows.length >= 1 && rows.length <= 4, "one to four rows").toBe(true);
   const inputs = titles(publish.inputs);
   const shown = [];
   for (const row of rows) {
@@ -140,10 +144,11 @@ test("the publishing step declares the rows the card shows, in the form the comp
   expect(carriersOf("publishRows"), "only the publishing step carries rows").toEqual(["publish"]);
 });
 
-test("the card shows the title and the words that go out, never an internal identifier", () => {
+test("the card shows the title, the approved words and the HTML that goes out, never an internal identifier", () => {
   expect(cinatraOf(node("publish")).publishRows).toEqual([
     { label: "Title", input: "postTitle" },
     { label: "Post text", input: "postText" },
+    { label: "Post HTML", input: "postHtml" },
   ]);
 });
 

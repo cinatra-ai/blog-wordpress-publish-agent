@@ -342,7 +342,12 @@ test("the page's title is the title the read step answers, shown in its own row 
   ).toBeTruthy();
   expect(
     dataEdge("read_post_text", "text", "publish", "postText"),
-    "the shown words are the pinned read, the same value the step sends",
+    "the shown words are the pinned read",
+  ).toBeTruthy();
+  expect(cardInputs, "the card shows the HTML").toContain("postHtml");
+  expect(
+    dataEdge("write_post_html", "postHtml", "publish", "postHtml"),
+    "the shown HTML is the HTML step's answer, the same value the step sends",
   ).toBeTruthy();
 
   // An empty title publishes nothing.
@@ -352,7 +357,7 @@ test("the page's title is the title the read step answers, shown in its own row 
   expect(recipe).not.toMatch(/postArtifact\b(?!Id)/);
   expect(publish.data.user).not.toMatch(/postArtifact\b(?!Id)/);
   expect(titles(publish.inputs).sort()).toEqual(
-    ["instanceId", "postArtifactId", "postRepresentationRevisionId", "postText", "postTitle", "truncated"].sort(),
+    ["instanceId", "postArtifactId", "postHtml", "postRepresentationRevisionId", "postText", "postTitle", "truncated"].sort(),
   );
   const contentInputs = titles(publish.inputs).filter(
     (t) => !["instanceId", "postArtifactId", "postRepresentationRevisionId", "truncated"].includes(t),
@@ -381,7 +386,7 @@ test("the record read after the review reaches only the read step, never the pub
   const intoPublish = (oas.data_flow_connections ?? [])
     .filter((e) => refOf(e.destination_node) === "publish")
     .map((e) => refOf(e.source_node));
-  for (const src of intoPublish) expect(["start", "read_post_text"], src).toContain(src);
+  for (const src of intoPublish) expect(["start", "read_post_text", "write_post_html"], src).toContain(src);
 });
 
 test("the page is published publicly — a draft has no address to write back", () => {
