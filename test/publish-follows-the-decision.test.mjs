@@ -67,7 +67,7 @@ const WRITE_HTML = "write_post_html";
 const PUBLISH = "publish";
 const WRITE_BACK = "write_address";
 const END = "end";
-const CHAIN = [START, GATHER_REVIEW, READ_RECORD, REVIEW, READ_TEXT, WRITE_HTML, PUBLISH, WRITE_BACK, END];
+const CHAIN = [START, GATHER_REVIEW, REVIEW, READ_TEXT, READ_RECORD, WRITE_HTML, PUBLISH, WRITE_BACK, END];
 
 // The tools of the WordPress connector the publish step names, and no other step.
 const SITE_TOOLS = ["wordpress_site_tool_write", "wordpress_site_tools_list"];
@@ -147,9 +147,11 @@ test("the flow is the one chain of steps this suite names, with no branch and no
   expect(steps[END].component_type).toBe("EndNode");
 });
 
-test("the publish step is reached only from the HTML step, which is reached only from the read of the pinned words; the two are the only model steps, and only the publish step writes (red: a second way into the publish step, a third model step, or a writing HTML step)", () => {
+test("the publish step is reached only from the HTML step, which is reached only from the read of the post's record, which is reached only from the read of the pinned words; the two are the only model steps, and only the publish step writes (red: a second way into the publish step, a third model step, or a writing HTML step)", () => {
   expect(into(PUBLISH).map((e) => e.from)).toEqual([WRITE_HTML]);
-  expect(into(WRITE_HTML).map((e) => e.from)).toEqual([READ_TEXT]);
+  expect(into(WRITE_HTML).map((e) => e.from)).toEqual([READ_RECORD]);
+  expect(into(READ_RECORD).map((e) => e.from)).toEqual([READ_TEXT]);
+  expect(into(READ_TEXT).map((e) => e.from)).toEqual([REVIEW]);
   expect(outOf(WRITE_HTML).map((e) => e.to)).toEqual([PUBLISH]);
   expect(outOf(PUBLISH).map((e) => e.to)).toEqual([WRITE_BACK]);
   expect(apiSteps().filter(([, c]) => isModelStep(c)).map(([id]) => id).sort()).toEqual([PUBLISH, WRITE_HTML].sort());
