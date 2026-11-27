@@ -30,6 +30,11 @@ import { manifest, node, oas, titles } from "./__tests__/oas-contract.mjs";
 const HTML_STEP = "write_post_html";
 const READ = "read_post_text";
 const PUBLISH = "publish";
+// The name ends in "-skill" (singular): that is the product's rule for a skill extension
+// (its naming test accepts a folder that ends in "-skill", and every pinned skill extension
+// is named so, e.g. @cinatra-ai/web-research-skill). The "-skills" pattern in this
+// repository's copy of extension-kind-gate.mjs is an older form; that check only reads
+// this package, which is an agent, and never resolves a dependency.
 const SKILL = "@cinatra-ai/blog-post-html-skill";
 const AGENT_DIR = "blog-wordpress-publish-agent";
 
