@@ -6,7 +6,7 @@
 // revision. The host resumes the review step with its answer, JSON text that
 // names the approved target (cinatra-ai/cinatra,
 // src/lib/artifacts/artifact-review-rejection.ts, buildReviewApproveEnvelope).
-// The read of the words, the publish card's "Post text" row and the publishing
+// The read of the words, the publish card's "Post HTML" row and the publishing
 // step must take that target, never the revision the run started with.
 //
 // THE READS. The step in front of the review (gather_review_target) reads the
@@ -240,7 +240,7 @@ function writeTargetSource() {
     .map((e) => `${refOf(e.source_node)}.${e.source_output}`);
 }
 
-test("after Regenerate and an approval of the successor, the read, the card's Post text row and the publish are the successor's (red: any of them from the revision the run started with)", async () => {
+test("after Regenerate and an approval of the successor, the read, the card's Post HTML row and the publish are the successor's (red: any of them from the revision the run started with)", async () => {
   const run = await runToThePublishCard({
     reviewDecision: approval([{ artifactId: ARTIFACT, representationRevisionId: SUCCESSOR }]),
   });
@@ -249,8 +249,8 @@ test("after Regenerate and an approval of the successor, the read, the card's Po
   expect(run.reads, "the record before the review, then behind it the record and, after the check, the words, each once").toEqual(
     APPROVED_READS(SUCCESSOR),
   );
-  expect(run.card["Post text"]).toBe(WORDS[SUCCESSOR]);
-  expect(run.publishInputs.postText).toBe(WORDS[SUCCESSOR]);
+  expect(Object.hasOwn(run.card, "Post text"), "the card shows no copy of the words").toBe(false);
+  expect(Object.hasOwn(run.publishInputs, "postText"), "the publishing step is given no copy of the words").toBe(false);
   expect(run.card["Post HTML"], "the card's HTML row is the HTML of the successor's words").toBe(HTML_OF(WORDS[SUCCESSOR]));
   expect(run.publishInputs.postHtml, "the body that goes out is the value the card shows").toBe(run.card["Post HTML"]);
   expect(run.publishInputs.postArtifactId).toBe(ARTIFACT);
@@ -266,8 +266,6 @@ test("an approval of the revision the run started with publishes that revision, 
   });
   expect(run.refusal).toBeNull();
   expect(run.reads).toEqual(APPROVED_READS(ORIGINAL));
-  expect(run.card["Post text"]).toBe(WORDS[ORIGINAL]);
-  expect(run.publishInputs.postText).toBe(WORDS[ORIGINAL]);
   expect(run.card["Post HTML"]).toBe(HTML_OF(WORDS[ORIGINAL]));
   expect(run.publishInputs.postHtml).toBe(HTML_OF(WORDS[ORIGINAL]));
   expect(run.publishInputs.postRepresentationRevisionId).toBe(ORIGINAL);
@@ -299,8 +297,7 @@ test("a drafted post whose body starts at a `## ` section is published under the
   expect(run.refusal).toBeNull();
   expect(run.card.Title).toBe("Ten ways to ship faster");
   expect(run.publishInputs.postTitle).toBe("Ten ways to ship faster");
-  expect(run.card["Post text"]).toBe(DRAFTED[SUCCESSOR]);
-  expect(run.publishInputs.postText).toBe(DRAFTED[SUCCESSOR]);
+  expect(run.publishInputs.postHtml).toBe(HTML_OF(DRAFTED[SUCCESSOR]));
 });
 
 test("a post with no title of its own takes a leading `# ` heading of the approved words", async () => {
@@ -310,7 +307,7 @@ test("a post with no title of its own takes a leading `# ` heading of the approv
   });
   expect(run.card.Title).toBe("The regenerated post");
   expect(run.publishInputs.postTitle).toBe("The regenerated post");
-  expect(run.publishInputs.postText, "the heading stays in the words").toBe(WORDS[SUCCESSOR]);
+  expect(run.publishInputs.postHtml, "the heading stays in the HTML of the words").toBe(HTML_OF(WORDS[SUCCESSOR]));
 });
 
 test("a post with no title of its own and only `## ` sections gets an empty title, never a section heading (red: the first section heading as the title)", async () => {
@@ -321,7 +318,7 @@ test("a post with no title of its own and only `## ` sections gets an empty titl
   });
   expect(run.card.Title).toBe("");
   expect(run.publishInputs.postTitle).toBe("");
-  expect(run.publishInputs.postText).toBe(DRAFTED[ORIGINAL]);
+  expect(run.publishInputs.postHtml).toBe(HTML_OF(DRAFTED[ORIGINAL]));
 });
 
 /** The module this pack declares for the read step. */
@@ -732,14 +729,14 @@ test("the publishing step and the write-back take the approved artifact and revi
       .map((e) => `${refOf(e.source_node)}.${e.source_output}`);
   expect(into(PUBLISH, "postArtifactId")).toEqual([`${READ}.artifactId`]);
   expect(into(PUBLISH, "postRepresentationRevisionId")).toEqual([`${READ}.representationRevisionId`]);
-  expect(into(PUBLISH, "postText")).toEqual([`${READ}.text`]);
+  expect(into(PUBLISH, "postText"), "no copy of the words goes into the publishing step").toEqual([]);
   expect(into(PUBLISH, "truncated")).toEqual([`${READ}.truncated`]);
   expect(into(PUBLISH, "postTitle")).toEqual([`${READ}.title`]);
   expect(into(PUBLISH, "postHtml"), "the body is the HTML step's answer").toEqual([`${HTML_STEP}.postHtml`]);
   expect(into(HTML_STEP, "postText"), "the HTML step writes the approved words").toEqual([`${READ}.text`]);
   expect(writeTargetSource()).toEqual([`${READ}.artifactId`]);
   const cardInputs = (node(PUBLISH).metadata.cinatra.publishRows ?? []).map((r) => r.input);
-  expect(cardInputs).toEqual(["postTitle", "postText", "postHtml"]);
+  expect(cardInputs).toEqual(["postTitle", "postHtml"]);
 });
 
 test("the read is the module this pack declares, shipped in the package, and its refusals fit the host's bounds", async () => {

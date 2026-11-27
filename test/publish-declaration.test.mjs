@@ -144,12 +144,32 @@ test("the publishing step declares the rows the card shows, in the form the comp
   expect(carriersOf("publishRows"), "only the publishing step carries rows").toEqual(["publish"]);
 });
 
-test("the card shows the title, the approved words and the HTML that goes out, never an internal identifier", () => {
+test("the card shows the title and the HTML that goes out, never an internal identifier", () => {
   expect(cinatraOf(node("publish")).publishRows).toEqual([
     { label: "Title", input: "postTitle" },
-    { label: "Post text", input: "postText" },
     { label: "Post HTML", input: "postHtml" },
   ]);
+});
+
+// The application copies every input of a publishing step into its approval
+// record and ends the run when that record is over 64 KiB
+// (cinatra-ai/cinatra, packages/agents/src/publish-decision-actions.ts,
+// PUBLISH_SURFACED_VALUES_MAX_BYTES). The step takes what it sends and shows:
+// the title and the HTML, and no copy of the full text.
+test("the publishing step has no input that carries the full text of the post (red: postText, or a data edge from the read of the words, into the step)", () => {
+  expect(titles(node("publish").inputs).sort()).toEqual(
+    ["instanceId", "postArtifactId", "postHtml", "postRepresentationRevisionId", "postTitle", "truncated"].sort(),
+  );
+  const fromTheWords = oas.data_flow_connections.filter(
+    (e) => e.source_node.$component_ref === "read_post_text" && e.destination_node.$component_ref === "publish",
+  );
+  expect(fromTheWords.map((e) => `${e.source_output}>${e.destination_input}`).sort()).toEqual([
+    "artifactId>postArtifactId",
+    "representationRevisionId>postRepresentationRevisionId",
+    "title>postTitle",
+    "truncated>truncated",
+  ]);
+  expect(JSON.stringify(node("publish").data)).not.toMatch(/postText/);
 });
 
 // Retired screen id: `@cinatra-ai/blog-wordpress-publish-agent:draft-confirm`.
