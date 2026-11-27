@@ -114,13 +114,12 @@ test("every way from the start to the publishing step passes the review", () => 
   );
 });
 
-test("the review comes before the publishing step, with the check of its answer, then the reads of the post's record and of the pinned words, between them", () => {
+test("the review comes before the publishing step, with the read of the post's record, then the read of the pinned words (which checks the review's answer first), between them", () => {
   const order = (oas.nodes ?? []).map(refOf);
   expect(order.indexOf(REVIEW)).toBeGreaterThan(order.indexOf(START));
   expect(order.indexOf(REVIEW)).toBeLessThan(order.indexOf(PUBLISH));
   const edges = controlEdges(oas);
-  expect(edges.filter((e) => e.from === REVIEW).map((e) => e.to)).toEqual(["check_review"]);
-  expect(edges.filter((e) => e.from === "check_review").map((e) => e.to)).toEqual(["read_post_record"]);
+  expect(edges.filter((e) => e.from === REVIEW).map((e) => e.to)).toEqual(["read_post_record"]);
   expect(edges.filter((e) => e.from === "read_post_record").map((e) => e.to)).toEqual(["read_post_text"]);
   expect(edges.filter((e) => e.to === REVIEW).map((e) => e.from)).toEqual([GATHER]);
   expect(pausesInFrontOf(oas, PUBLISH), "the pack check reaches no pause in front of the publishing step").toEqual([]);
@@ -145,11 +144,7 @@ test("the review pins the revision the run started with, and the read and the pu
     expect(sources(GATHER, name), name).toEqual([`${START}.${name}`]);
   }
   // The answer names the approved revision (publish-the-approved-revision.test.mjs).
-  expect(sources("check_review", "reviewDecision")).toEqual([`${REVIEW}.reviewDecision`]);
-  expect(sources("check_review", "postArtifactId"), "the artifact under review").toEqual([`${START}.postArtifactId`]);
-  expect(sources("read_post_record", "postArtifactId"), "the artifact the check approved").toEqual([
-    "check_review.artifactId",
-  ]);
+  expect(sources("read_post_record", "postArtifactId"), "the artifact under review").toEqual([`${START}.postArtifactId`]);
   expect(sources("read_post_text", "reviewDecision")).toEqual([`${REVIEW}.reviewDecision`]);
   expect(sources("read_post_text", "postArtifactId"), "the artifact under review").toEqual([`${START}.postArtifactId`]);
   expect(sources("read_post_text", "postRepresentationRevisionId")).toEqual([]);

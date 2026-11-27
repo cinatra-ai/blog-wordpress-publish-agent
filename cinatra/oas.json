@@ -3,7 +3,7 @@
   "component_type": "Flow",
   "id": "blog-wordpress-publish-agent-flow",
   "name": "Blog WordPress Publish Agent",
-  "description": "Publishes the blog post ARTIFACT revision a person continued with to a connected WordPress site, and writes the site's address back onto that artifact. The flow takes an artifact reference (postArtifactId + postRepresentationRevisionId), never raw text and never a blog record: the review's projection step reads the artifact's record (artifacts_get) and a step reads the approved revision's words (artifact_content_read, through the tool this package declares), both through the host's dependency-scoped artifact reads admitted by this package's declared @cinatra-ai/blog-post-artifact edge; the page's title is the post's own title, read from the artifact's record after that check (or, only when the post has none, a leading `# ` heading of the pinned words; never a `## ` section heading), which the publish card shows in its own row beside the words; before the words are read the run parks on a review of exactly that revision (an InputMessageNode marked metadata.cinatra.artifactReview.targetsInput), so the application's artifact review is decided earlier in the same run; the review's answer names the revision the person approved (that revision, or the successor a Regenerate made), and the read, the publish card and the publish take that revision from the answer, never the revision the run started with; an answer that names no approved revision stops the run at a check right behind the review, so after the review nothing more is read (the record is read once in front of the review, to build what the person reviews; no second record read and no content read follow), no publish card opens, the write-back never runs and nothing reaches the site; after that read a model step writes the approved words as the page's HTML by the rules of the blog-post-html skill (this package's one declared dependency of kind skill), and the publish card shows that HTML in its own row beside the title and the words; the application holds the run in front of the orchestration step, which is declared publishes: true, until a person decides on the application's own publish card, so nothing reaches the site before that decision; only after Publish does that step create the page, with exactly that HTML as its body, through the WordPress connector's own site catalogue (wordpress_site_tools_list + wordpress_site_tool_write); a second deterministic step merges the address onto the artifact's data through objects_update. The publish returns a receipt, never a new artifact.",
+  "description": "Publishes the blog post ARTIFACT revision a person continued with to a connected WordPress site, and writes the site's address back onto that artifact. The flow takes an artifact reference (postArtifactId + postRepresentationRevisionId), never raw text and never a blog record: the review's projection step reads the artifact's record (artifacts_get) and a step reads the approved revision's words (artifact_content_read, through the tool this package declares), both through the host's dependency-scoped artifact reads admitted by this package's declared @cinatra-ai/blog-post-artifact edge; the page's title is the post's own title, read from the artifact's record right behind the review, so a title changed while the review was open is the title that goes out (or, only when the post has none, a leading `# ` heading of the pinned words; never a `## ` section heading), which the publish card shows in its own row beside the words; before the words are read the run parks on a review of exactly that revision (an InputMessageNode marked metadata.cinatra.artifactReview.targetsInput), so the application's artifact review is decided earlier in the same run; the review's answer names the revision the person approved (that revision, or the successor a Regenerate made), and the read, the publish card and the publish take that revision from the answer, never the revision the run started with; an answer that names no approved revision stops the run at the step that reads the words, which checks the answer first; after a refused review exactly one read-only read of the post's record still happens (the record read right behind the review), and nothing else is read: no content read follows, no publish card opens, the write-back never runs and nothing reaches the site; after that read a model step writes the approved words as the page's HTML by the rules of the blog-post-html skill (this package's one declared dependency of kind skill), and the publish card shows that HTML in its own row beside the title and the words; the application holds the run in front of the orchestration step, which is declared publishes: true, until a person decides on the application's own publish card, so nothing reaches the site before that decision; only after Publish does that step create the page, with exactly that HTML as its body, through the WordPress connector's own site catalogue (wordpress_site_tools_list + wordpress_site_tool_write); a second deterministic step merges the address onto the artifact's data through objects_update. The publish returns a receipt, never a new artifact.",
   "metadata": {
     "cinatra": {
       "type": "flow",
@@ -78,9 +78,6 @@
       "$component_ref": "review_post"
     },
     {
-      "$component_ref": "check_review"
-    },
-    {
       "$component_ref": "read_post_record"
     },
     {
@@ -122,19 +119,9 @@
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "review_post_to_check_review",
+      "name": "review_post_to_read_post_record",
       "from_node": {
         "$component_ref": "review_post"
-      },
-      "to_node": {
-        "$component_ref": "check_review"
-      }
-    },
-    {
-      "component_type": "ControlFlowEdge",
-      "name": "check_review_to_read_post_record",
-      "from_node": {
-        "$component_ref": "check_review"
       },
       "to_node": {
         "$component_ref": "read_post_record"
@@ -242,47 +229,11 @@
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "start_postArtifactId_to_check_review_postArtifactId",
+      "name": "start_postArtifactId_to_read_post_record_postArtifactId",
       "source_node": {
         "$component_ref": "start"
       },
       "source_output": "postArtifactId",
-      "destination_node": {
-        "$component_ref": "check_review"
-      },
-      "destination_input": "postArtifactId"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "review_post_reviewDecision_to_check_review_reviewDecision",
-      "source_node": {
-        "$component_ref": "review_post"
-      },
-      "source_output": "reviewDecision",
-      "destination_node": {
-        "$component_ref": "check_review"
-      },
-      "destination_input": "reviewDecision"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "start_cinatra_run_id_to_check_review_cinatra_run_id",
-      "source_node": {
-        "$component_ref": "start"
-      },
-      "source_output": "cinatra_run_id",
-      "destination_node": {
-        "$component_ref": "check_review"
-      },
-      "destination_input": "cinatra_run_id"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "check_review_artifactId_to_read_post_record_postArtifactId",
-      "source_node": {
-        "$component_ref": "check_review"
-      },
-      "source_output": "artifactId",
       "destination_node": {
         "$component_ref": "read_post_record"
       },
@@ -680,59 +631,6 @@
         }
       ]
     },
-    "check_review": {
-      "component_type": "ApiNode",
-      "id": "check_review",
-      "name": "Check the review's answer before the reads behind the review",
-      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
-      "http_method": "POST",
-      "data": {
-        "tool": "extension_tool",
-        "input": {
-          "name": "approved_post_text",
-          "input": {
-            "reviewDecision": "{{ reviewDecision }}",
-            "artifactId": "{{ postArtifactId }}",
-            "checkOnly": true
-          }
-        },
-        "agent_run_id": "{{ cinatra_run_id }}"
-      },
-      "inputs": [
-        {
-          "title": "reviewDecision",
-          "type": "string",
-          "default": ""
-        },
-        {
-          "title": "postArtifactId",
-          "type": "string"
-        },
-        {
-          "title": "cinatra_run_id",
-          "type": "string",
-          "default": ""
-        }
-      ],
-      "outputs": [
-        {
-          "title": "artifactId",
-          "type": "string"
-        },
-        {
-          "title": "representationRevisionId",
-          "type": "string"
-        }
-      ],
-      "metadata": {
-        "cinatra": {
-          "riskClass": "read_only",
-          "requiresApproval": false,
-          "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
-          "description": "Checks the review's answer, through the tool this pack declares (approved_post_text, with checkOnly), BEFORE the reads behind the review. It reads nothing itself: it hands on the artifact the answer approved, which is the artifact the record read behind this step reads. An answer that is not an approval of exactly one revision of the artifact under review (a rejection, a malformed answer, no target or more than one, an artifact other than the one under review) stops the run here with a sentence that says why, so after the review nothing more is read: the run's only read is the record read in front of the review (gather_review_target, which builds what the person reviews); no second record read and no content read follow, no publish card opens, the write-back (objects_update) never runs and nothing reaches the site."
-        }
-      }
-    },
     "read_post_record": {
       "component_type": "ApiNode",
       "id": "read_post_record",
@@ -768,7 +666,7 @@
           "riskClass": "read_only",
           "requiresApproval": false,
           "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
-          "description": "Reads the post artifact's record (artifacts_get) again, after the review and only after the check of the review's answer, of the artifact that check approved, admitted by this package's declared @cinatra-ai/blog-post-artifact edge. The draft writer files the post's title as the artifact's own title and starts the body at its first `## ` section, so the page's title is on the record, not in the words. The record goes only to the read step behind this one, which answers the title as plain text; the publish card shows that title in its own row, so the title that goes out is on the card. It writes nothing. A failure of this read stops the run before the publish card, so nothing is published."
+          "description": "Reads the post artifact's record (artifacts_get) again, right behind the review, of the artifact under review, admitted by this package's declared @cinatra-ai/blog-post-artifact edge. It is read-only and runs whatever the review's answer was: the read step behind it checks the answer first. So after a refused review this is the one read that still happens, and nothing else is read. It reads the record as it is behind the review, so a title changed while the review was open is the title that goes out. The draft writer files the post's title as the artifact's own title and starts the body at its first `## ` section, so the page's title is on the record, not in the words. The record goes only to the read step behind this one, which answers the title as plain text; the publish card shows that title in its own row, so the title that goes out is on the card. It writes nothing. A failure of this read stops the run with the read's own error, even after a refused review, before the publish card, so nothing is published."
         }
       }
     },
@@ -837,7 +735,7 @@
           "riskClass": "read_only",
           "requiresApproval": false,
           "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
-          "description": "Reads the words of the revision the review APPROVED, through the tool this pack declares (approved_post_text). The review step resumes with the host's answer as JSON text, and a flow cannot parse it, so the module takes the approved target from that answer: the revision the person continued with, or the successor a Regenerate made and the person then approved. It reads that revision's words through the content read the host binds to this run, admitted by this package's declared @cinatra-ai/blog-post-artifact edge, and hands on the approved artifact, the approved revision and its words, the only body this agent publishes. The revision is the one the answer names, never the latest revision and never the revision the run started with. An answer that names no approved revision (a rejection, a malformed answer, no target or more than one, an artifact other than the one under review) never reaches this step: the check in front of the record read has already stopped the run, and this step checks the answer again before its read. A record that is not the approved artifact's record (none, not an object, another artifact) stops the run here, before the content read, with a sentence that says nothing is published. It also answers the page's title as plain text: the post record's own title without the white space around it (the record read after the check; plain text, so Unicode white space is removed too), or, only when the record has none, a leading `# ` heading of the approved words by the CommonMark rule (a blank line holds only spaces and tabs; a closing run of `#` is removed only after a space or a tab; any other Unicode white space is content); a `## ` section heading is never a title, a title of white space only is no title, and with neither the title is empty. The words are handed on unchanged."
+          "description": "Reads the words of the revision the review APPROVED, through the tool this pack declares (approved_post_text). The review step resumes with the host's answer as JSON text, and a flow cannot parse it, so the module takes the approved target from that answer: the revision the person continued with, or the successor a Regenerate made and the person then approved. It reads that revision's words through the content read the host binds to this run, admitted by this package's declared @cinatra-ai/blog-post-artifact edge, and hands on the approved artifact, the approved revision and its words, the only body this agent publishes. The revision is the one the answer names, never the latest revision and never the revision the run started with. An answer that names no approved revision (a rejection, a malformed answer, no target or more than one, an artifact other than the one under review) stops the run here, with a sentence that says why: this step checks the answer first, then that the record is the approved artifact's record, and only then reads the words. After a refused review the only read that happened behind the pause is the record read in front of this step; no content read, no publish card, no write-back (objects_update) and no site call follow. A record that is not the approved artifact's record (none, not an object, another artifact) stops the run here, before the content read, with a sentence that says nothing is published. It also answers the page's title as plain text: the post record's own title without the white space around it (the record read behind the review; plain text, so Unicode white space is removed too), or, only when the record has none, a leading `# ` heading of the approved words by the CommonMark rule (a blank line holds only spaces and tabs; a closing run of `#` is removed only after a space or a tab; any other Unicode white space is content); a `## ` section heading is never a title, a title of white space only is no title, and with neither the title is empty. The words are handed on unchanged."
         }
       }
     },
