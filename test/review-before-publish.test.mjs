@@ -114,21 +114,14 @@ test("every way from the start to the publishing step passes the review", () => 
   );
 });
 
-test("the review comes before the publishing step, with the read of the pinned words, which checks its answer first, right behind it, and the record read behind that read", () => {
+test("the review comes before the publishing step, with the read of the post's record, then the read of the pinned words (which checks the review's answer first), between them", () => {
   const order = (oas.nodes ?? []).map(refOf);
   expect(order.indexOf(REVIEW)).toBeGreaterThan(order.indexOf(START));
   expect(order.indexOf(REVIEW)).toBeLessThan(order.indexOf(PUBLISH));
   const edges = controlEdges(oas);
+  expect(edges.filter((e) => e.from === REVIEW).map((e) => e.to)).toEqual(["read_post_record"]);
+  expect(edges.filter((e) => e.from === "read_post_record").map((e) => e.to)).toEqual(["read_post_text"]);
   expect(edges.filter((e) => e.to === REVIEW).map((e) => e.from)).toEqual([GATHER]);
-  expect(edges.filter((e) => e.from === REVIEW).map((e) => e.to), "the read of the words is the step right behind the review").toEqual([
-    "read_post_text",
-  ]);
-  expect(edges.filter((e) => e.to === "read_post_text").map((e) => e.from)).toEqual([REVIEW]);
-  expect(edges.filter((e) => e.from === "read_post_text").map((e) => e.to), "the record is read only behind that read").toEqual([
-    "read_post_record",
-  ]);
-  expect(edges.filter((e) => e.to === "read_post_record").map((e) => e.from)).toEqual(["read_post_text"]);
-  expect(edges.filter((e) => e.from === "read_post_record").map((e) => e.to)).toEqual(["write_post_html"]);
   expect(pausesInFrontOf(oas, PUBLISH), "the pack check reaches no pause in front of the publishing step").toEqual([]);
 });
 
@@ -151,16 +144,11 @@ test("the review pins the revision the run started with, and the read and the pu
     expect(sources(GATHER, name), name).toEqual([`${START}.${name}`]);
   }
   // The answer names the approved revision (publish-the-approved-revision.test.mjs).
-  expect(sources("read_post_record", "postArtifactId"), "the artifact the answer approved, handed on by the read").toEqual([
-    "read_post_text.artifactId",
-  ]);
+  expect(sources("read_post_record", "postArtifactId"), "the artifact under review").toEqual([`${START}.postArtifactId`]);
   expect(sources("read_post_text", "reviewDecision")).toEqual([`${REVIEW}.reviewDecision`]);
   expect(sources("read_post_text", "postArtifactId"), "the artifact under review").toEqual([`${START}.postArtifactId`]);
   expect(sources("read_post_text", "postRepresentationRevisionId")).toEqual([]);
-  expect(sources("read_post_text", "postRecord"), "the read of the words takes no record").toEqual([]);
-  expect(sources("write_post_html", "postRecord"), "the record goes to the step that names the title").toEqual([
-    "read_post_record.artifact",
-  ]);
+  expect(sources("read_post_text", "postRecord"), "the record read after the review").toEqual(["read_post_record.artifact"]);
   expect(sources(PUBLISH, "postArtifactId")).toEqual(["read_post_text.artifactId"]);
   expect(sources(PUBLISH, "postRepresentationRevisionId")).toEqual(["read_post_text.representationRevisionId"]);
 

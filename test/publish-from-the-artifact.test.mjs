@@ -322,11 +322,10 @@ test("a cut-short read is never published as the pinned revision", () => {
 // title and starts the body at its first `## ` section, so the pinned words
 // carry no title heading: a title taken from their first heading would be a
 // section heading, and a rule that wants a heading would publish nothing. So
-// the HTML step, which is given the record read after the review's approval,
-// answers the title as plain text (the record's own title, else a leading `# `
-// heading, never a `## ` one), the card shows it in its own row, and the
-// publishing step takes it from there and from nowhere else.
-test("the page's title is the title the HTML step answers, shown in its own row of the publish card", () => {
+// the read step answers the title as plain text (the record's own title, else
+// a leading `# ` heading, never a `## ` one), the card shows it in its own row,
+// and the publishing step takes it from there and from nowhere else.
+test("the page's title is the title the read step answers, shown in its own row of the publish card", () => {
   const publish = bridgeNode();
   const recipe = publish.data.system;
   const cardInputs = (publish.metadata.cinatra.publishRows ?? []).map((r) => r.input);
@@ -338,8 +337,8 @@ test("the page's title is the title the HTML step answers, shown in its own row 
   expect(cardInputs, "the card shows the title").toContain("postTitle");
   expect(cardInputs, "the card shows the words").toContain("postText");
   expect(
-    dataEdge("write_post_html", "postTitle", "publish", "postTitle"),
-    "the shown title is the HTML step's answer, the same value the step sends",
+    dataEdge("read_post_text", "title", "publish", "postTitle"),
+    "the shown title is the read step's answer, the same value the step sends",
   ).toBeTruthy();
   expect(
     dataEdge("read_post_text", "text", "publish", "postText"),
@@ -368,38 +367,22 @@ test("the page's title is the title the HTML step answers, shown in its own row 
   );
 });
 
-test("the record is read once behind the review, for the approved artifact, and reaches only the HTML step, never the publishing step (red: a record feeding the publish, a record read in front of the review that is carried over the pause, or a record read of another artifact)", () => {
+test("the record read after the review reaches only the read step, never the publishing step (red: a record feeding the publish)", () => {
   const refOf = (r) => r?.$component_ref;
   const edges = (oas.control_flow_connections ?? []).map((e) => [refOf(e.from_node), refOf(e.to_node)]);
-  const reachFrom = (first) => {
-    const seen = new Set();
-    const queue = [first];
-    while (queue.length > 0) {
-      const id = queue.shift();
-      for (const [from, to] of edges) if (from === id && !seen.has(to)) (seen.add(to), queue.push(to));
-    }
-    return seen;
-  };
-  const after = reachFrom("review_post");
+  const after = new Set();
+  const queue = ["review_post"];
+  while (queue.length > 0) {
+    const id = queue.shift();
+    for (const [from, to] of edges) if (from === id && !after.has(to)) (after.add(to), queue.push(to));
+  }
   expect(after.has("publish"), "the publish step follows the review").toBe(true);
-  // Exactly one artifacts_get is behind the review, and it is the record read; the other one is in front of it.
-  expect([...after].filter((id) => node(id)?.data?.tool === "artifacts_get")).toEqual(["read_post_record"]);
-  expect(reachFrom("start").has("read_post_record")).toBe(true);
-  expect(
-    [...reachFrom("start")].filter((id) => !after.has(id) && node(id)?.data?.tool === "artifacts_get"),
-    "the only read in front of the review is the one that builds its target set",
-  ).toEqual(["gather_review_target"]);
-  const into = (id, name) =>
-    (oas.data_flow_connections ?? [])
-      .filter((e) => refOf(e.destination_node) === id && e.destination_input === name)
-      .map((e) => `${refOf(e.source_node)}.${e.source_output}`);
-  expect(into("read_post_record", "postArtifactId"), "the approved artifact, as the read of the words handed it on").toEqual([
-    "read_post_text.artifactId",
-  ]);
+  const recordReads = [...after].filter((id) => node(id)?.data?.tool === "artifacts_get");
+  expect(recordReads).toEqual(["read_post_record"]);
   const fromRecord = (oas.data_flow_connections ?? [])
     .filter((e) => refOf(e.source_node) === "read_post_record")
     .map((e) => `${refOf(e.destination_node)}.${e.destination_input}`);
-  expect(fromRecord).toEqual(["write_post_html.postRecord"]);
+  expect(fromRecord).toEqual(["read_post_text.postRecord"]);
   const intoPublish = (oas.data_flow_connections ?? [])
     .filter((e) => refOf(e.destination_node) === "publish")
     .map((e) => refOf(e.source_node));

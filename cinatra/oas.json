@@ -3,7 +3,7 @@
   "component_type": "Flow",
   "id": "blog-wordpress-publish-agent-flow",
   "name": "Blog WordPress Publish Agent",
-  "description": "Publishes the blog post ARTIFACT revision a person continued with to a connected WordPress site, and writes the site's address back onto that artifact. The flow takes an artifact reference (postArtifactId + postRepresentationRevisionId), never raw text and never a blog record: the review's projection step reads the artifact's record (artifacts_get) in front of the review, and behind the review a step reads the approved revision's words (artifact_content_read, through the tool this package declares) and a second step reads the record again (artifacts_get), both through the host's dependency-scoped artifact reads admitted by this package's declared @cinatra-ai/blog-post-artifact edge; the page's title is the post's own title, read from the artifact's record after the review is approved, so it is the title the post has at the approval, and named by the model step that writes the page's HTML (or, only when the post has none, a leading `# ` heading of the pinned words; never a `## ` section heading), which the publish card shows in its own row beside the words; before the words are read the run parks on a review of exactly that revision (an InputMessageNode marked metadata.cinatra.artifactReview.targetsInput), so the application's artifact review is decided earlier in the same run; the review's answer names the revision the person approved (that revision, or the successor a Regenerate made), and the read, the publish card and the publish take that revision from the answer, never the revision the run started with; an answer that names no approved revision stops the run at the step that reads the words, which checks the answer before it reads anything, so after a refused review nothing is read (the record is read once in front of the review, to build what the person reviews; no second record read and no content read follow), no publish card opens, the write-back never runs and nothing reaches the site; after those reads a model step writes the approved words as the page's HTML by the rules of the blog-post-html skill (this package's one declared dependency of kind skill) and names the page's title from the record, and the publish card shows that HTML in its own row beside the title and the words; the application holds the run in front of the orchestration step, which is declared publishes: true, until a person decides on the application's own publish card, so nothing reaches the site before that decision; only after Publish does that step create the page, with exactly that HTML as its body, through the WordPress connector's own site catalogue (wordpress_site_tools_list + wordpress_site_tool_write); a second deterministic step merges the address onto the artifact's data through objects_update. The publish returns a receipt, never a new artifact.",
+  "description": "Publishes the blog post ARTIFACT revision a person continued with to a connected WordPress site, and writes the site's address back onto that artifact. The flow takes an artifact reference (postArtifactId + postRepresentationRevisionId), never raw text and never a blog record: the review's projection step reads the artifact's record (artifacts_get) and a step reads the approved revision's words (artifact_content_read, through the tool this package declares), both through the host's dependency-scoped artifact reads admitted by this package's declared @cinatra-ai/blog-post-artifact edge; the page's title is the post's own title, read from the artifact's record right behind the review, so a title changed while the review was open is the title that goes out (or, only when the post has none, a leading `# ` heading of the pinned words; never a `## ` section heading), which the publish card shows in its own row beside the words; before the words are read the run parks on a review of exactly that revision (an InputMessageNode marked metadata.cinatra.artifactReview.targetsInput), so the application's artifact review is decided earlier in the same run; the review's answer names the revision the person approved (that revision, or the successor a Regenerate made), and the read, the publish card and the publish take that revision from the answer, never the revision the run started with; an answer that names no approved revision stops the run at the step that reads the words, which checks the answer first; after a refused review exactly one read-only read of the post's record still happens (the record read right behind the review), and nothing else is read: no content read follows, no publish card opens, the write-back never runs and nothing reaches the site; after that read a model step writes the approved words as the page's HTML by the rules of the blog-post-html skill (this package's one declared dependency of kind skill), and the publish card shows that HTML in its own row beside the title and the words; the application holds the run in front of the orchestration step, which is declared publishes: true, until a person decides on the application's own publish card, so nothing reaches the site before that decision; only after Publish does that step create the page, with exactly that HTML as its body, through the WordPress connector's own site catalogue (wordpress_site_tools_list + wordpress_site_tool_write); a second deterministic step merges the address onto the artifact's data through objects_update. The publish returns a receipt, never a new artifact.",
   "metadata": {
     "cinatra": {
       "type": "flow",
@@ -78,10 +78,10 @@
       "$component_ref": "review_post"
     },
     {
-      "$component_ref": "read_post_text"
+      "$component_ref": "read_post_record"
     },
     {
-      "$component_ref": "read_post_record"
+      "$component_ref": "read_post_text"
     },
     {
       "$component_ref": "write_post_html"
@@ -119,29 +119,29 @@
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "review_post_to_read_post_text",
+      "name": "review_post_to_read_post_record",
       "from_node": {
         "$component_ref": "review_post"
       },
       "to_node": {
-        "$component_ref": "read_post_text"
+        "$component_ref": "read_post_record"
       }
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "read_post_text_to_read_post_record",
+      "name": "read_post_record_to_read_post_text",
       "from_node": {
-        "$component_ref": "read_post_text"
+        "$component_ref": "read_post_record"
       },
       "to_node": {
-        "$component_ref": "read_post_record"
+        "$component_ref": "read_post_text"
       }
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "read_post_record_to_write_post_html",
+      "name": "read_post_text_to_write_post_html",
       "from_node": {
-        "$component_ref": "read_post_record"
+        "$component_ref": "read_post_text"
       },
       "to_node": {
         "$component_ref": "write_post_html"
@@ -229,11 +229,11 @@
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "read_post_text_artifactId_to_read_post_record_postArtifactId",
+      "name": "start_postArtifactId_to_read_post_record_postArtifactId",
       "source_node": {
-        "$component_ref": "read_post_text"
+        "$component_ref": "start"
       },
-      "source_output": "artifactId",
+      "source_output": "postArtifactId",
       "destination_node": {
         "$component_ref": "read_post_record"
       },
@@ -253,13 +253,13 @@
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "read_post_record_artifact_to_write_post_html_postRecord",
+      "name": "read_post_record_artifact_to_read_post_text_postRecord",
       "source_node": {
         "$component_ref": "read_post_record"
       },
       "source_output": "artifact",
       "destination_node": {
-        "$component_ref": "write_post_html"
+        "$component_ref": "read_post_text"
       },
       "destination_input": "postRecord"
     },
@@ -337,11 +337,11 @@
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "write_post_html_postTitle_to_publish_postTitle",
+      "name": "read_post_text_title_to_publish_postTitle",
       "source_node": {
-        "$component_ref": "write_post_html"
+        "$component_ref": "read_post_text"
       },
-      "source_output": "postTitle",
+      "source_output": "title",
       "destination_node": {
         "$component_ref": "publish"
       },
@@ -631,66 +631,6 @@
         }
       ]
     },
-    "read_post_text": {
-      "component_type": "ApiNode",
-      "id": "read_post_text",
-      "name": "Read the revision the review approved",
-      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
-      "http_method": "POST",
-      "data": {
-        "tool": "extension_tool",
-        "input": {
-          "name": "approved_post_text",
-          "input": {
-            "reviewDecision": "{{ reviewDecision }}",
-            "artifactId": "{{ postArtifactId }}"
-          }
-        },
-        "agent_run_id": "{{ cinatra_run_id }}"
-      },
-      "inputs": [
-        {
-          "title": "reviewDecision",
-          "type": "string",
-          "default": ""
-        },
-        {
-          "title": "postArtifactId",
-          "type": "string"
-        },
-        {
-          "title": "cinatra_run_id",
-          "type": "string",
-          "default": ""
-        }
-      ],
-      "outputs": [
-        {
-          "title": "artifactId",
-          "type": "string"
-        },
-        {
-          "title": "representationRevisionId",
-          "type": "string"
-        },
-        {
-          "title": "text",
-          "type": "string"
-        },
-        {
-          "title": "truncated",
-          "type": "boolean"
-        }
-      ],
-      "metadata": {
-        "cinatra": {
-          "riskClass": "read_only",
-          "requiresApproval": false,
-          "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
-          "description": "Reads the words of the revision the review APPROVED, through the tool this pack declares (approved_post_text). The review step resumes with the host's answer as JSON text, and a flow cannot parse it, so the module takes the approved target from that answer: the revision the person continued with, or the successor a Regenerate made and the person then approved. It reads that revision's words through the content read the host binds to this run, admitted by this package's declared @cinatra-ai/blog-post-artifact edge, and hands on the approved artifact, the approved revision and its words, the only body this agent publishes. The revision is the one the answer names, never the latest revision and never the revision the run started with. This is the first step behind the review and the flow's one step that runs the pack's code: it checks the answer before it reads anything. An answer that names no approved revision (a rejection, a malformed answer, no target or more than one, an artifact other than the one under review) stops the run here, with a sentence that says why, so after a refused review nothing is read, no publish card opens, the write-back (objects_update) never runs and nothing reaches the site. The artifact it hands on is the one the answer approved: the record read behind this step reads that artifact and no other. The words are handed on unchanged."
-        }
-      }
-    },
     "read_post_record": {
       "component_type": "ApiNode",
       "id": "read_post_record",
@@ -726,7 +666,76 @@
           "riskClass": "read_only",
           "requiresApproval": false,
           "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
-          "description": "Reads the post artifact's record (artifacts_get) after the review, and only behind the read step that checked the review's answer: the artifact it reads is the one that step handed on, the artifact the answer approved, admitted by this package's declared @cinatra-ai/blog-post-artifact edge. It runs only after an approval, so after a refused review nothing is read. It reads the record as it is at the approval, not as it was when the review opened, so a title changed while the review was open is the title that goes out. The draft writer files the post's title as the artifact's own title and starts the body at its first `## ` section, so the page's title is on the record, not in the words. The record goes only to the HTML step behind this one, which names the title from it as plain text; the publish card shows that title in its own row, so the title that goes out is on the card. It writes nothing. A failure of this read stops the run before the publish card, so nothing is published."
+          "description": "Reads the post artifact's record (artifacts_get) again, right behind the review, of the artifact under review, admitted by this package's declared @cinatra-ai/blog-post-artifact edge. It is read-only and runs whatever the review's answer was: the read step behind it checks the answer first. So after a refused review this is the one read that still happens, and nothing else is read. It reads the record as it is behind the review, so a title changed while the review was open is the title that goes out. The draft writer files the post's title as the artifact's own title and starts the body at its first `## ` section, so the page's title is on the record, not in the words. The record goes only to the read step behind this one, which answers the title as plain text; the publish card shows that title in its own row, so the title that goes out is on the card. It writes nothing. A failure of this read stops the run with the read's own error, even after a refused review, before the publish card, so nothing is published."
+        }
+      }
+    },
+    "read_post_text": {
+      "component_type": "ApiNode",
+      "id": "read_post_text",
+      "name": "Read the revision the review approved",
+      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+      "http_method": "POST",
+      "data": {
+        "tool": "extension_tool",
+        "input": {
+          "name": "approved_post_text",
+          "input": {
+            "reviewDecision": "{{ reviewDecision }}",
+            "artifactId": "{{ postArtifactId }}",
+            "postRecord": "{# pyagentspec-input-hint: {{ postRecord }} #}{{ postRecord | tojson }}"
+          }
+        },
+        "agent_run_id": "{{ cinatra_run_id }}"
+      },
+      "inputs": [
+        {
+          "title": "reviewDecision",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "postArtifactId",
+          "type": "string"
+        },
+        {
+          "title": "cinatra_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "postRecord",
+          "type": "object"
+        }
+      ],
+      "outputs": [
+        {
+          "title": "artifactId",
+          "type": "string"
+        },
+        {
+          "title": "representationRevisionId",
+          "type": "string"
+        },
+        {
+          "title": "text",
+          "type": "string"
+        },
+        {
+          "title": "truncated",
+          "type": "boolean"
+        },
+        {
+          "title": "title",
+          "type": "string"
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "read_only",
+          "requiresApproval": false,
+          "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
+          "description": "Reads the words of the revision the review APPROVED, through the tool this pack declares (approved_post_text). The review step resumes with the host's answer as JSON text, and a flow cannot parse it, so the module takes the approved target from that answer: the revision the person continued with, or the successor a Regenerate made and the person then approved. It reads that revision's words through the content read the host binds to this run, admitted by this package's declared @cinatra-ai/blog-post-artifact edge, and hands on the approved artifact, the approved revision and its words, the only body this agent publishes. The revision is the one the answer names, never the latest revision and never the revision the run started with. An answer that names no approved revision (a rejection, a malformed answer, no target or more than one, an artifact other than the one under review) stops the run here, with a sentence that says why: this step checks the answer first, then that the record is the approved artifact's record, and only then reads the words. After a refused review the only read that happened behind the pause is the record read in front of this step; no content read, no publish card, no write-back (objects_update) and no site call follow. A record that is not the approved artifact's record (none, not an object, another artifact) stops the run here, before the content read, with a sentence that says nothing is published. It also answers the page's title as plain text: the post record's own title without the white space around it (the record read behind the review; plain text, so Unicode white space is removed too), or, only when the record has none, a leading `# ` heading of the approved words by the CommonMark rule (a blank line holds only spaces and tabs; a closing run of `#` is removed only after a space or a tab; any other Unicode white space is content); a `## ` section heading is never a title, a title of white space only is no title, and with neither the title is empty. The words are handed on unchanged."
         }
       }
     },
@@ -738,8 +747,8 @@
       "http_method": "POST",
       "data": {
         "agent_id": "blog-wordpress-publish-agent",
-        "system": "You turn the approved markdown of one blog post into the HTML of a WordPress page, and you name the page's title. Return a single JSON object {postTitle, postHtml} \u2014 nothing else.\n\n# Write the post's HTML and name its title\n\nYour skill, blog-post-html, holds the rules for the HTML. Read its SKILL.md first and follow every rule in it exactly. It is the only tool you are offered: call nothing else.\n\n## What you are given\n\n- `postText: string` \u2014 the approved markdown of the post: the words of the revision the review approved, read by the deterministic step in front of you. A person approved these words.\n- `postRecord: object` \u2014 the record of that post, read after the review was approved. Its `title` is the post's own title.\n\n## What you return\n\n- `postHtml: string` \u2014 the HTML of `postText`, written by the skill's rules: the same words, in the same order, as plain HTML elements, with no title, no wrapper, no script, no style and no comment. An empty `postText` gives an empty `postHtml`.\n- `postTitle: string` \u2014 the page's title, chosen by these rules and no other:\n  1. When `postRecord.title` is a string with anything in it besides white space, `postTitle` is that string with the white space around it removed, every other character as it is.\n  2. Otherwise, when the first line of `postText` that is not blank (a blank line holds only spaces and tabs) is a level-one heading (at most three spaces of indent, then `#`, then a space, a tab or the end of the line), `postTitle` is that heading's text: without the `#`, without the spaces and tabs around it and without a closing run of `#` that follows a space or a tab.\n  3. Otherwise `postTitle` is the empty string. A `## ` heading, or a heading of any other level, is never a title.\n  You never re-word, shorten, translate, complete or invent a title, and a heading of `postText` stays in `postHtml` as the skill's rules say.\n\nYou never change, add, remove or reorder a word of `postText`. You do not publish anything: the application shows your title and your HTML on its publish card, and the step behind the card sends exactly that title and that HTML to the site after the person chose Publish.\n",
-        "user": "{# pyagentspec-input-hint: {{ postText }} {{ postRecord }} #}Write the HTML of the approved post text below by the rules of your skill, and name the page's title by your rules.\n\nInputs:\n- postText: {{ postText }}\n- postRecord: {{ postRecord | tojson }}",
+        "system": "You turn the approved markdown of one blog post into the HTML of a WordPress page. Return a single JSON object {postHtml} \u2014 nothing else.\n\n# Write the post's HTML\n\nYour skill, blog-post-html, holds the rules for this conversion. Read its SKILL.md first and follow every rule in it exactly. It is the only tool you are offered: call nothing else.\n\n## What you are given\n\n- `postText: string` \u2014 the approved markdown of the post: the words of the revision the review approved, read by the deterministic step in front of you. A person approved these words.\n\n## What you return\n\n- `postHtml: string` \u2014 the HTML of `postText`, written by the skill's rules: the same words, in the same order, as plain HTML elements, with no title, no wrapper, no script, no style and no comment. An empty `postText` gives an empty `postHtml`.\n\nYou never change, add, remove or reorder a word of `postText`. You do not publish anything: the application shows your HTML on its publish card, and the step behind the card sends exactly that HTML to the site after the person chose Publish.\n",
+        "user": "{# pyagentspec-input-hint: {{ postText }} #}Write the HTML of the approved post text below by the rules of your skill.\n\nInputs:\n- postText: {{ postText }}",
         "cinatra_llm": {
           "preferredProvider": "openai",
           "preferredModel": "gpt-5.5"
@@ -750,10 +759,6 @@
         {
           "title": "postText",
           "type": "string"
-        },
-        {
-          "title": "postRecord",
-          "type": "object"
         }
       ],
       "outputs": [
@@ -761,11 +766,6 @@
           "title": "postHtml",
           "type": "string",
           "description": "The HTML of the approved post text, written by the rules of the blog-post-html skill: the same words in the same order as plain HTML elements, with no title, wrapper, script, style or comment. The publish card shows it in its own row, and the publish step sends it unchanged."
-        },
-        {
-          "title": "postTitle",
-          "type": "string",
-          "description": "The page's title, named from the post's record (its title with the white space around it removed) or, only when the record has none, from a leading level-one heading of the approved words; the empty string when neither gives one. The publish card shows it in its own row, and the publish step sends it unchanged; an empty title publishes nothing."
         }
       ],
       "metadata": {
@@ -774,7 +774,7 @@
           "requiresApproval": false,
           "publishes": false,
           "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
-          "description": "One model step between the reads behind the review and the publish card. It turns the approved markdown (postText) into the HTML of the page (postHtml) by the rules of the blog-post-html skill, which this package receives through its one declared runtime dependency of kind skill (@cinatra-ai/blog-post-html-skill); the application finds that skill by this step's agent_id. It also names the page's title (postTitle) from the post's record (postRecord, read after the review was approved): the record's own title, or, only when the record has none, a leading `# ` heading of the approved words, never a `## ` section heading, and empty when neither gives one. The step writes nothing and reaches no connector: data.toolbox_ids is the empty list, so the bridge offers it no MCP server and no connector tool, and the skill-read tool is the only tool it is offered. It deliberately declares NO metadata.cinatra.tools: a declared list, even an empty one, is a ceiling that also removes the application's built-in skill-read tool, and the step would then run without its skill. The title and the HTML are shown on the publish card in their own rows, so the person approves the exact title and the exact bytes that the publish step sends."
+          "description": "One model step between the read of the approved words and the publish card. It turns the approved markdown (postText) into the HTML of the page (postHtml) by the rules of the blog-post-html skill, which this package receives through its one declared runtime dependency of kind skill (@cinatra-ai/blog-post-html-skill); the application finds that skill by this step's agent_id. The step writes nothing and reaches no connector: data.toolbox_ids is the empty list, so the bridge offers it no MCP server and no connector tool, and the skill-read tool is the only tool it is offered. It deliberately declares NO metadata.cinatra.tools: a declared list, even an empty one, is a ceiling that also removes the application's built-in skill-read tool, and the step would then run without its skill. The HTML is shown on the publish card in its own row, so the person approves the exact bytes that the publish step sends."
         }
       }
     },
@@ -786,7 +786,7 @@
       "http_method": "POST",
       "data": {
         "agent_id": "blog-wordpress-publish-agent",
-        "system": "You are a blog-WordPress-publish orchestrator. Follow the instructions below step-by-step. Return a single JSON object with {postArtifactId, postRepresentationRevisionId, publishedUrl, publishedExternalId, addressPatch, addressWritten, approved, summary} \u2014 nothing else.\n\n# Blog WordPress Publish Agent\n\nYou publish ONE blog-post artifact revision to a connected WordPress site and hand the site's address back so the deterministic step behind you can write it onto the artifact.\n\nThe application asks the person before this step runs: it holds the run in front of you on its own publish card, and you run only after the person chose Publish there. So the person has already approved this publish, and every envelope you return carries `approved: true`: a failure shows in `publishedUrl`, `addressWritten` and the `summary`, never in `approved`. Ask nothing of your own and never wait for a person.\n\n## What you are given\n\n- `postArtifactId: string` \u2014 the blog post artifact (`@cinatra-ai/blog-post-artifact:post`).\n- `postRepresentationRevisionId: string` \u2014 THE REVISION THE REVIEW APPROVED: the revision the person continued with, or the successor a Regenerate made and the person then approved. It is pinned; nothing later is published.\n- `postTitle: string` \u2014 THE PAGE'S TITLE, already named for you by the model step in front of you (the step that writes the HTML): the post's own title from its record, or a leading `# ` heading of the pinned words when the post has none. The publish card shows it in its own row. Use it exactly as given. It may be empty.\n- `postText: string` \u2014 the words of exactly that revision, already read for you by the deterministic step in front of you (the host's dependency-scoped artifact content read of the revision the review approved). The publish card shows these words in their own row. You do not send them: the body is `postHtml`.\n- `postHtml: string` \u2014 THE BODY YOU PUBLISH: the HTML of `postText`, already written for you by the model step in front of you (the step that follows the blog-post-html skill). The publish card shows it in its own row, so it is exactly what the person approved. This is the ONLY body you publish, and you send it unchanged.\n- `truncated: boolean` \u2014 whether the pinned read came back cut short. See Step 0.\n- `instanceId: string` \u2014 the connected WordPress site.\n\nYou do NOT re-word, re-generate, summarise or extend `postText` or `postHtml`, and you convert nothing yourself. The body you publish is `postHtml`, byte for byte as you were given it; it is the HTML of the pinned revision.\n\n## The page's title\n\nThe page's title is `postTitle`, exactly as given \u2014 the title the application's publish card shows in its own row before this step runs. The title comes from nowhere else: never take one from a section heading of `postText` (a `## ` line is a section of the body, not the title), never re-word it, and never make one up. An empty `postTitle` means there is no title the person saw, so you publish nothing (see Step 0b). The body is `postHtml` as it is: you do not add the title to it or remove a line from it.\n\n## Tool discipline\n\nYou may call exactly these 2 primitives, both on the WordPress connector:\n\n- `wordpress_site_tools_list({ instanceId })` \u2014 the site's own catalogue of abilities, each with its input schema.\n- `wordpress_site_tool_write({ instanceId, toolName, args })` \u2014 call one of them, with `args` matching the schema that listing gave you.\n\nCall NOTHING else. In particular: you never read or write an artifact yourself (the steps around you do that through the host's own primitives), and you never reach a blog record.\n\n## Step-by-step recipe\n\n### Step 0 \u2014 the pinned words must be whole\n\nWhen `truncated` is true the read came back cut short, so what you hold is NOT the whole pinned revision. Publish nothing and return the failure envelope of Step 4 (`approved: true`) with a `summary` naming the truncation \u2014 the person did approve; the read is what failed. Never publish a cut-short body, and never call it the pinned revision.\n\n### Step 0b \u2014 the title must be on the card\n\nWhen `postTitle` is empty, the post has no title the person saw on the publish card. Publish nothing and return the failure envelope of Step 4 (`approved: true`) with a `summary` saying the post has no title to give the page \u2014 the person did approve; the post gives no title. Never publish a page whose title the person did not see.\n\n### Step 0c \u2014 the HTML must be on the card\n\nWhen `postHtml` is empty, there is no body the person saw on the publish card. Publish nothing and return the failure envelope of Step 4 (`approved: true`) with a `summary` saying the post has no HTML to publish \u2014 the person did approve; the HTML step gave no body. Never send `postText` in its place and never write HTML of your own.\n\n### Step 1 \u2014 find the site's ability that creates a post\n\n```\nwordpress_site_tools_list({ instanceId: <instanceId> })\n```\n\nChoose the ability that creates a post/page from a title and a body AND can make it PUBLICLY VISIBLE \u2014 its advertised input schema must carry the argument that publishes the page (a WordPress `status` of `publish`, or whatever that schema names). Match on the advertised input schema, never on a name you assumed. An ability whose only outcome is a draft does NOT satisfy this step: a draft has no public address, so there is nothing to write back for it. If the listing offers no such ability, return the failure envelope of Step 4 (`approved: true`) with a summary naming the site and what was missing \u2014 the person did approve; the site offers no way to publish the page.\n\n### Step 2 \u2014 create the page\n\n```\nwordpress_site_tool_write({\n  instanceId: <instanceId>,\n  toolName: <the ability you chose>,\n  args: <its advertised arguments, carrying postTitle as the title, postHtml unchanged as the body, and the status value that publishes the page publicly>,\n})\n```\n\nOn an agent run this call waits for the person's recorded decision before the site changes.\n\nFrom the result read:\n\n- the page's public address \u2192 `publishedUrl`\n- the site's own id for that page \u2192 `publishedExternalId`\n\nIf the call throws, or returns a page the site does not report as publicly published (a draft, pending or private state), return the failure envelope of Step 4 (`approved: true`) with a summary naming the failure \u2014 the person did approve; the site write is what failed. Only a page the site reports as publicly published carries an address worth writing back.\n\n### Step 3 \u2014 build the write-back patch\n\nThe deterministic step behind you merges `addressPatch` onto the post artifact's own data through the host's write-back primitive. Build it with EXACTLY these three keys and no others:\n\n```json\n{\n  \"wordpressPublishedUrl\": \"<publishedUrl>\",\n  \"wordpressPublishedExternalId\": \"<publishedExternalId>\",\n  \"wordpressPublishedRevisionId\": \"<postRepresentationRevisionId>\"\n}\n```\n\nNever guess an address, and never put one in the patch that the site did not return. The patch's key space is CLOSED: those three keys and nothing else may ever appear in it. Never add a key of your own, and never a field of the artifact itself (`title`, `mime`, `content` or any other) \u2014 the step behind you merges the patch straight onto the artifact's own data, so a key you invent is written onto the artifact. The step behind you writes the patch only when all three values are non-empty; Step 4 says which envelope, and so which patch, you return.\n\n### Step 4 \u2014 return\n\nChoose the envelope by one rule, from what the site returned:\n\n- Complete: all three members of the patch are non-empty strings (the site reported the page as publicly published and returned both its address and its own id, and you were given the revision id). Return the published envelope.\n- Partial: the site reported the page as publicly published and returned its address or its own id, but not both. Return the partial envelope. The page exists, so the top-level `publishedUrl` and `publishedExternalId` carry the value the site returned, and the value it did not return is `\"\"`; `addressPatch` is the empty patch; `addressWritten` is false; the `summary` names the value the site returned.\n- Nothing: no publicly published page with an address or an id (a cut-short read, an empty title, empty HTML, no ability, a failed call, a page that is not publicly published, or a result with no address and no id). Return the failure envelope.\n\nThe empty patch is the same three keys, each the empty string `\"\"`. The step behind you writes nothing for the empty patch, so `addressWritten` is true only for the published envelope. Only the failure envelope has both top-level receipt values empty, so a partial result never reads as a page that does not exist.\n\nThe published envelope:\n\n```json\n{\n  \"postArtifactId\": \"<postArtifactId>\",\n  \"postRepresentationRevisionId\": \"<postRepresentationRevisionId>\",\n  \"publishedUrl\": \"<publishedUrl>\",\n  \"publishedExternalId\": \"<publishedExternalId>\",\n  \"addressPatch\": {\n    \"wordpressPublishedUrl\": \"<publishedUrl>\",\n    \"wordpressPublishedExternalId\": \"<publishedExternalId>\",\n    \"wordpressPublishedRevisionId\": \"<postRepresentationRevisionId>\"\n  },\n  \"addressWritten\": true,\n  \"approved\": true,\n  \"summary\": \"<one-line explanation a person can read>\"\n}\n```\n\nThe partial envelope (each top-level receipt value is what the site returned, or `\"\"` when it returned none):\n\n```json\n{\n  \"postArtifactId\": \"<postArtifactId>\",\n  \"postRepresentationRevisionId\": \"<postRepresentationRevisionId>\",\n  \"publishedUrl\": \"<publishedUrl if the site returned it, else empty>\",\n  \"publishedExternalId\": \"<publishedExternalId if the site returned it, else empty>\",\n  \"addressPatch\": {\n    \"wordpressPublishedUrl\": \"\",\n    \"wordpressPublishedExternalId\": \"\",\n    \"wordpressPublishedRevisionId\": \"\"\n  },\n  \"addressWritten\": false,\n  \"approved\": true,\n  \"summary\": \"<one line naming the address or id the site returned, and the value it did not>\"\n}\n```\n\nThe failure envelope, with a one-line `summary` that names the cause:\n\n```json\n{\n  \"postArtifactId\": \"<postArtifactId>\",\n  \"postRepresentationRevisionId\": \"<postRepresentationRevisionId>\",\n  \"publishedUrl\": \"\",\n  \"publishedExternalId\": \"\",\n  \"addressPatch\": {\n    \"wordpressPublishedUrl\": \"\",\n    \"wordpressPublishedExternalId\": \"\",\n    \"wordpressPublishedRevisionId\": \"\"\n  },\n  \"addressWritten\": false,\n  \"approved\": true,\n  \"summary\": \"<one-line explanation a person can read>\"\n}\n```\n",
+        "system": "You are a blog-WordPress-publish orchestrator. Follow the instructions below step-by-step. Return a single JSON object with {postArtifactId, postRepresentationRevisionId, publishedUrl, publishedExternalId, addressPatch, addressWritten, approved, summary} \u2014 nothing else.\n\n# Blog WordPress Publish Agent\n\nYou publish ONE blog-post artifact revision to a connected WordPress site and hand the site's address back so the deterministic step behind you can write it onto the artifact.\n\nThe application asks the person before this step runs: it holds the run in front of you on its own publish card, and you run only after the person chose Publish there. So the person has already approved this publish, and every envelope you return carries `approved: true`: a failure shows in `publishedUrl`, `addressWritten` and the `summary`, never in `approved`. Ask nothing of your own and never wait for a person.\n\n## What you are given\n\n- `postArtifactId: string` \u2014 the blog post artifact (`@cinatra-ai/blog-post-artifact:post`).\n- `postRepresentationRevisionId: string` \u2014 THE REVISION THE REVIEW APPROVED: the revision the person continued with, or the successor a Regenerate made and the person then approved. It is pinned; nothing later is published.\n- `postTitle: string` \u2014 THE PAGE'S TITLE, already chosen for you by the deterministic step in front of you: the post's own title, or a leading `# ` heading of the pinned words when the post has none. The publish card shows it in its own row. Use it exactly as given. It may be empty.\n- `postText: string` \u2014 the words of exactly that revision, already read for you by the deterministic step in front of you (the host's dependency-scoped artifact content read of the revision the review approved). The publish card shows these words in their own row. You do not send them: the body is `postHtml`.\n- `postHtml: string` \u2014 THE BODY YOU PUBLISH: the HTML of `postText`, already written for you by the model step in front of you (the step that follows the blog-post-html skill). The publish card shows it in its own row, so it is exactly what the person approved. This is the ONLY body you publish, and you send it unchanged.\n- `truncated: boolean` \u2014 whether the pinned read came back cut short. See Step 0.\n- `instanceId: string` \u2014 the connected WordPress site.\n\nYou do NOT re-word, re-generate, summarise or extend `postText` or `postHtml`, and you convert nothing yourself. The body you publish is `postHtml`, byte for byte as you were given it; it is the HTML of the pinned revision.\n\n## The page's title\n\nThe page's title is `postTitle`, exactly as given \u2014 the title the application's publish card shows in its own row before this step runs. The title comes from nowhere else: never take one from a section heading of `postText` (a `## ` line is a section of the body, not the title), never re-word it, and never make one up. An empty `postTitle` means there is no title the person saw, so you publish nothing (see Step 0b). The body is `postHtml` as it is: you do not add the title to it or remove a line from it.\n\n## Tool discipline\n\nYou may call exactly these 2 primitives, both on the WordPress connector:\n\n- `wordpress_site_tools_list({ instanceId })` \u2014 the site's own catalogue of abilities, each with its input schema.\n- `wordpress_site_tool_write({ instanceId, toolName, args })` \u2014 call one of them, with `args` matching the schema that listing gave you.\n\nCall NOTHING else. In particular: you never read or write an artifact yourself (the steps around you do that through the host's own primitives), and you never reach a blog record.\n\n## Step-by-step recipe\n\n### Step 0 \u2014 the pinned words must be whole\n\nWhen `truncated` is true the read came back cut short, so what you hold is NOT the whole pinned revision. Publish nothing and return the failure envelope of Step 4 (`approved: true`) with a `summary` naming the truncation \u2014 the person did approve; the read is what failed. Never publish a cut-short body, and never call it the pinned revision.\n\n### Step 0b \u2014 the title must be on the card\n\nWhen `postTitle` is empty, the post has no title the person saw on the publish card. Publish nothing and return the failure envelope of Step 4 (`approved: true`) with a `summary` saying the post has no title to give the page \u2014 the person did approve; the post gives no title. Never publish a page whose title the person did not see.\n\n### Step 0c \u2014 the HTML must be on the card\n\nWhen `postHtml` is empty, there is no body the person saw on the publish card. Publish nothing and return the failure envelope of Step 4 (`approved: true`) with a `summary` saying the post has no HTML to publish \u2014 the person did approve; the HTML step gave no body. Never send `postText` in its place and never write HTML of your own.\n\n### Step 1 \u2014 find the site's ability that creates a post\n\n```\nwordpress_site_tools_list({ instanceId: <instanceId> })\n```\n\nChoose the ability that creates a post/page from a title and a body AND can make it PUBLICLY VISIBLE \u2014 its advertised input schema must carry the argument that publishes the page (a WordPress `status` of `publish`, or whatever that schema names). Match on the advertised input schema, never on a name you assumed. An ability whose only outcome is a draft does NOT satisfy this step: a draft has no public address, so there is nothing to write back for it. If the listing offers no such ability, return the failure envelope of Step 4 (`approved: true`) with a summary naming the site and what was missing \u2014 the person did approve; the site offers no way to publish the page.\n\n### Step 2 \u2014 create the page\n\n```\nwordpress_site_tool_write({\n  instanceId: <instanceId>,\n  toolName: <the ability you chose>,\n  args: <its advertised arguments, carrying postTitle as the title, postHtml unchanged as the body, and the status value that publishes the page publicly>,\n})\n```\n\nOn an agent run this call waits for the person's recorded decision before the site changes.\n\nFrom the result read:\n\n- the page's public address \u2192 `publishedUrl`\n- the site's own id for that page \u2192 `publishedExternalId`\n\nIf the call throws, or returns a page the site does not report as publicly published (a draft, pending or private state), return the failure envelope of Step 4 (`approved: true`) with a summary naming the failure \u2014 the person did approve; the site write is what failed. Only a page the site reports as publicly published carries an address worth writing back.\n\n### Step 3 \u2014 build the write-back patch\n\nThe deterministic step behind you merges `addressPatch` onto the post artifact's own data through the host's write-back primitive. Build it with EXACTLY these three keys and no others:\n\n```json\n{\n  \"wordpressPublishedUrl\": \"<publishedUrl>\",\n  \"wordpressPublishedExternalId\": \"<publishedExternalId>\",\n  \"wordpressPublishedRevisionId\": \"<postRepresentationRevisionId>\"\n}\n```\n\nNever guess an address, and never put one in the patch that the site did not return. The patch's key space is CLOSED: those three keys and nothing else may ever appear in it. Never add a key of your own, and never a field of the artifact itself (`title`, `mime`, `content` or any other) \u2014 the step behind you merges the patch straight onto the artifact's own data, so a key you invent is written onto the artifact. The step behind you writes the patch only when all three values are non-empty; Step 4 says which envelope, and so which patch, you return.\n\n### Step 4 \u2014 return\n\nChoose the envelope by one rule, from what the site returned:\n\n- Complete: all three members of the patch are non-empty strings (the site reported the page as publicly published and returned both its address and its own id, and you were given the revision id). Return the published envelope.\n- Partial: the site reported the page as publicly published and returned its address or its own id, but not both. Return the partial envelope. The page exists, so the top-level `publishedUrl` and `publishedExternalId` carry the value the site returned, and the value it did not return is `\"\"`; `addressPatch` is the empty patch; `addressWritten` is false; the `summary` names the value the site returned.\n- Nothing: no publicly published page with an address or an id (a cut-short read, an empty title, empty HTML, no ability, a failed call, a page that is not publicly published, or a result with no address and no id). Return the failure envelope.\n\nThe empty patch is the same three keys, each the empty string `\"\"`. The step behind you writes nothing for the empty patch, so `addressWritten` is true only for the published envelope. Only the failure envelope has both top-level receipt values empty, so a partial result never reads as a page that does not exist.\n\nThe published envelope:\n\n```json\n{\n  \"postArtifactId\": \"<postArtifactId>\",\n  \"postRepresentationRevisionId\": \"<postRepresentationRevisionId>\",\n  \"publishedUrl\": \"<publishedUrl>\",\n  \"publishedExternalId\": \"<publishedExternalId>\",\n  \"addressPatch\": {\n    \"wordpressPublishedUrl\": \"<publishedUrl>\",\n    \"wordpressPublishedExternalId\": \"<publishedExternalId>\",\n    \"wordpressPublishedRevisionId\": \"<postRepresentationRevisionId>\"\n  },\n  \"addressWritten\": true,\n  \"approved\": true,\n  \"summary\": \"<one-line explanation a person can read>\"\n}\n```\n\nThe partial envelope (each top-level receipt value is what the site returned, or `\"\"` when it returned none):\n\n```json\n{\n  \"postArtifactId\": \"<postArtifactId>\",\n  \"postRepresentationRevisionId\": \"<postRepresentationRevisionId>\",\n  \"publishedUrl\": \"<publishedUrl if the site returned it, else empty>\",\n  \"publishedExternalId\": \"<publishedExternalId if the site returned it, else empty>\",\n  \"addressPatch\": {\n    \"wordpressPublishedUrl\": \"\",\n    \"wordpressPublishedExternalId\": \"\",\n    \"wordpressPublishedRevisionId\": \"\"\n  },\n  \"addressWritten\": false,\n  \"approved\": true,\n  \"summary\": \"<one line naming the address or id the site returned, and the value it did not>\"\n}\n```\n\nThe failure envelope, with a one-line `summary` that names the cause:\n\n```json\n{\n  \"postArtifactId\": \"<postArtifactId>\",\n  \"postRepresentationRevisionId\": \"<postRepresentationRevisionId>\",\n  \"publishedUrl\": \"\",\n  \"publishedExternalId\": \"\",\n  \"addressPatch\": {\n    \"wordpressPublishedUrl\": \"\",\n    \"wordpressPublishedExternalId\": \"\",\n    \"wordpressPublishedRevisionId\": \"\"\n  },\n  \"addressWritten\": false,\n  \"approved\": true,\n  \"summary\": \"<one-line explanation a person can read>\"\n}\n```\n",
         "user": "{# pyagentspec-input-hint: {{ postArtifactId }} {{ postRepresentationRevisionId }} {{ instanceId }} {{ postTitle }} {{ postText }} {{ postHtml }} {{ truncated }} #}Publish the pinned revision of the blog post artifact to the connected WordPress site.\n\nInputs:\n- postArtifactId: {{ postArtifactId }}\n- postRepresentationRevisionId: {{ postRepresentationRevisionId }}\n- instanceId: {{ instanceId }}\n- postTitle: {{ postTitle }}\n- postText: {{ postText }}\n- postHtml: {{ postHtml }}\n- truncated: {{ truncated }}",
         "cinatra_llm": {
           "preferredProvider": "openai",
@@ -904,7 +904,7 @@
             "wordpress_site_tool_write"
           ],
           "packageName": "@cinatra-ai/blog-wordpress-publish-agent",
-          "description": "Single ApiNode -> /api/llm-bridge. metadata.cinatra.toolboxes is INTENTIONALLY OMITTED so the model reaches the WordPress connector's wordpress_site_tools_list / wordpress_site_tool_write through the injected Cinatra self-MCP. The node declares publishes: true, so the application stops the run directly in front of it and asks the person on its own publish card BEFORE the site write; a decline ends the run before this step runs, so it leaves nothing behind to remove. publishRows names what the card shows: the page's title, the approved words and the HTML that goes out. The title is postTitle, which the write_post_html step answers as plain text beside the HTML (the post record's own title, read after the review, or, only when the post has none, a leading `# ` heading of the pinned words; never a `## ` section heading; empty: nothing is published), the words are the pinned words unchanged, and the HTML is postHtml, which the write_post_html step wrote from those words and which this step sends unchanged. So every byte of the body the site receives is on the card; the step is given no record of the artifact, only the title the card shows. The node emits addressPatch \u2014 the three literal address keys, each the empty string in the partial and failure envelopes; the partial envelope keeps the returned address or id in the top-level receipt outputs \u2014 which the write_address step merges onto the artifact. The step declares its two site tools in metadata.cinatra.tools: the model is offered those two tools and no other, and the application uses the person's released decision for the site write only for a step that declares the tool it calls, so without the list the write is refused even after the person chose Publish."
+          "description": "Single ApiNode -> /api/llm-bridge. metadata.cinatra.toolboxes is INTENTIONALLY OMITTED so the model reaches the WordPress connector's wordpress_site_tools_list / wordpress_site_tool_write through the injected Cinatra self-MCP. The node declares publishes: true, so the application stops the run directly in front of it and asks the person on its own publish card BEFORE the site write; a decline ends the run before this step runs, so it leaves nothing behind to remove. publishRows names what the card shows: the page's title, the approved words and the HTML that goes out. The title is postTitle, which the read step answers as plain text (the post record's own title, or a leading `# ` heading of the pinned words; never a `## ` section heading; empty: nothing is published), the words are the pinned words unchanged, and the HTML is postHtml, which the write_post_html step wrote from those words and which this step sends unchanged. So every byte of the body the site receives is on the card; the step is given no record of the artifact, only the title the card shows. The node emits addressPatch \u2014 the three literal address keys, each the empty string in the partial and failure envelopes; the partial envelope keeps the returned address or id in the top-level receipt outputs \u2014 which the write_address step merges onto the artifact. The step declares its two site tools in metadata.cinatra.tools: the model is offered those two tools and no other, and the application uses the person's released decision for the site write only for a step that declares the tool it calls, so without the list the write is refused even after the person chose Publish."
         }
       }
     },
